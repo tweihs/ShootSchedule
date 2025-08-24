@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Schedule</title>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        .button-group button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="button-group">
+        <button class="active" onclick="toggleType('NSSA', this)">NSSA</button>
+        <button class="active" onclick="toggleType('NSCA', this)">NSCA</button>
+    </div>
+    <div class="button-group">
+        <button class="active" onclick="toggleMonth('Jan', this)">Jan</button>
+        <button class="active" onclick="toggleMonth('Feb', this)">Feb</button>
+        <button class="active" onclick="toggleMonth('Mar', this)">Mar</button>
+        <button class="active" onclick="toggleMonth('Apr', this)">Apr</button>
+        <button class="active" onclick="toggleMonth('May', this)">May</button>
+        <button class="active" onclick="toggleMonth('Jun', this)">Jun</button>
+        <button class="active" onclick="toggleMonth('Jul', this)">Jul</button>
+        <button class="active" onclick="toggleMonth('Aug', this)">Aug</button>
+        <button class="active" onclick="toggleMonth('Sep', this)">Sep</button>
+        <button class="active" onclick="toggleMonth('Oct', this)">Oct</button>
+        <button class="active" onclick="toggleMonth('Nov', this)">Nov</button>
+        <button class="active" onclick="toggleMonth('Dec', this)">Dec</button>
+    </div>
+    <table id="eventTable">
+        <thead>
+            <tr>
+                <th>Shoot Type</th>
+                <th>Shoot Name</th>
+                <th>Club Name</th>
+                <th>City</th>
+                <th>State</th>
+                <th>Country</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+    </table>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script>
+        let eventData = [];
+        let activeTypes = ['NSSA', 'NSCA'];
+        let activeMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+
+        function loadData() {
+            Papa.parse("Geocoded_Combined_Shoot_Schedule_2024.csv", {
+                download: true,
+                header: true,
+                complete: function(results) {
+                    eventData = results.data;
+                    displayData();
+                }
+            });
+        }
+
+        function displayData() {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
+            eventData.forEach((row) => {
+                // Check for undefined or null values and handle them gracefully
+                const shootType = row['Shoot Type'] ? row['Shoot Type'].toUpperCase() : 'Unknown Type';
+                const startDate = row['Start Date'] ? new Date(row['Start Date']) : new Date();
+                const month = startDate.toLocaleString('default', { month: 'short' });
+                const shootName = row['Shoot Name'] || 'No Name';
+                const clubName = row['Club Name'] || 'No Club Name';
+                const city = row['City'] || 'No City';
+                const state = row['State'] ? row['State'].toUpperCase() : 'Unknown State';
+                const country = row['Country'] ? row['Country'].toUpperCase() : 'Unknown Country';
+
+                if ((activeTypes.length === 0 || activeTypes.includes(shootType)) &&
+                    (activeMonths.length === 0 || activeMonths.includes(month))) {
+                    const rowElement = `<tr>
+                        <td>${shootType}</td>
+                        <td>${shootName}</td>
+                        <td>${clubName}</td>
+                        <td>${city}</td>
+                        <td>${state}</td>
+                        <td>${country}</td>
+                    </tr>`;
+                    tableBody.innerHTML += rowElement;
+                }
+            });
+        }
+
+        function toggleType(type, button) {
+            const index = activeTypes.indexOf(type);
+            if (index > -1) {
+                activeTypes.splice(index, 1);
+                button.classList.remove('active');
+            } else {
+                activeTypes.push(type);
+                button.classList.add('active');
+            }
+            displayData();
+        }
+
+        function toggleMonth(month, button) {
+            const index = activeMonths.indexOf(month);
+            if (index > -1) {
+                activeMonths.splice(index, 1);
+                button.classList.remove('active');
+            } else {
+                activeMonths.push(month);
+                button.classList.add('active');
+            }
+            displayData();
+        }
+    </script>
+</body>
+</html>

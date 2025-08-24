@@ -1,0 +1,5 @@
+{
+  "db": {
+    "url": "postgres://u8bc0f64rlk46n:p24e608893e2e9812f8db8234878db631956fcbae5afe81febf1e95126c8fa26f@cbdhrtd93854d5.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/de5iln7eou0tgj?sslmode=require"
+  }
+}

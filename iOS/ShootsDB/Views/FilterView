@@ -1,0 +1,305 @@
+//
+//  FilterView.swift
+//  ShootsDB
+//
+//  Created by Tyson Weihs on 12/8/24.
+//
+
+import SwiftUI
+
+// MARK: - FilterOptions Model
+class FilterOptions: ObservableObject {
+    @Published var selectedNSCAOptions: [String] = []
+    @Published var selectedMonths: [String] = []
+    @Published var selectedStates: [String] = []
+    @Published var selectedZones: [String] = []
+    @Published var showNotableShoots: Bool = false
+    @Published var showFutureShoots: Bool = true
+    @Published var showMarkedShoots: Bool = false
+
+    // Full list of states
+    static let allStates: [String: String] = [
+        "CA": "California", "AZ": "Arizona", "NM": "New Mexico", "WA": "Washington", "MT": "Montana",
+        "ID": "Idaho", "UT": "Utah", "NV": "Nevada", "CO": "Colorado", "WY": "Wyoming",
+        "TX": "Texas", "OK": "Oklahoma", "AR": "Arkansas", "LA": "Louisiana", "MS": "Mississippi",
+        "ND": "North Dakota", "SD": "South Dakota", "NE": "Nebraska", "KS": "Kansas", "MN": "Minnesota",
+        "IA": "Iowa", "IL": "Illinois", "MI": "Michigan", "IN": "Indiana", "KY": "Kentucky",
+        "WI": "Wisconsin", "MO": "Missouri", "TN": "Tennessee", "NC": "North Carolina", "SC": "South Carolina",
+        "GA": "Georgia", "AL": "Alabama", "FL": "Florida", "PA": "Pennsylvania", "WV": "West Virginia",
+        "VA": "Virginia", "MD": "Maryland", "NJ": "New Jersey", "DE": "Delaware", "CT": "Connecticut",
+        "NY": "New York", "VT": "Vermont", "NH": "New Hampshire", "MA": "Massachusetts", "RI": "Rhode Island"
+    ]
+
+    // Zones mapping to states
+    static let zones: [String: [String]] = [
+        "West": ["CA", "AZ", "NM", "WA", "MT", "ID", "UT", "NV", "CO", "WY"],
+        "S. Central": ["TX", "OK", "AR", "LA", "MS"],
+        "N. Central": ["ND", "SD", "NE", "KS", "MN", "IA", "IL", "MI", "IN", "KY", "WI", "MO"],
+        "Southeast": ["TN", "NC", "SC", "GA", "AL", "FL"],
+        "Northeast": ["PA", "WV", "VA", "MD", "NJ", "DE", "CT", "NY", "VT", "NH", "MA", "RI"]
+    ]
+
+    func reset() {
+        selectedNSCAOptions = []
+        selectedMonths = []
+        selectedStates = []
+        selectedZones = []
+        showNotableShoots = false
+        showFutureShoots = true
+        showMarkedShoots = false
+    }
+
+    func toggleNSCAOption(_ option: String) {
+        if selectedNSCAOptions.contains(option) {
+            selectedNSCAOptions.removeAll { $0 == option }
+        } else {
+            selectedNSCAOptions.append(option)
+        }
+    }
+
+    func toggleMonth(_ month: String) {
+        if selectedMonths.contains(month) {
+            selectedMonths.removeAll { $0 == month }
+        } else {
+            selectedMonths.append(month)
+        }
+    }
+
+    func toggleZone(_ zone: String) {
+        let zoneStates = FilterOptions.zones[zone] ?? []
+        if selectedZones.contains(zone) {
+            selectedZones.removeAll { $0 == zone }
+            selectedStates.removeAll { zoneStates.contains($0) }
+        } else {
+            selectedZones.append(zone)
+            selectedStates.append(contentsOf: zoneStates.filter { !selectedStates.contains($0) })
+        }
+    }
+}
+
+
+
+// MARK: - FilterButtonStyle
+struct FilterButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading) // Left-aligned
+            .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
+            .foregroundColor(isSelected ? .white : .primary)
+            .cornerRadius(8)
+    }
+}
+
+// MARK: - FilterView
+struct FilterView: View {
+    @ObservedObject var filterOptions: FilterOptions
+    let allNSCAOptions: [String]
+    let allMonths: [String]
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationView {
+            Form {
+                TogglesSection(filterOptions: filterOptions)
+                EventTypesSection(allNSCAOptions: allNSCAOptions, filterOptions: filterOptions)
+                MonthsSection(allMonths: allMonths, filterOptions: filterOptions)
+                ZonesSection(filterOptions: filterOptions)
+                StatesSection(filterOptions: filterOptions)
+            }
+            .interactiveDismissDisabled(false) // Swipe-to-dismiss
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Reset") {
+                        filterOptions.reset()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+// MARK: - EventTypesSection
+struct EventTypesSection: View {
+    let allNSCAOptions: [String]
+    @ObservedObject var filterOptions: FilterOptions
+
+    var body: some View {
+        Section(header: Text("Event Types")) {
+            WrapHStack {
+                ForEach(allNSCAOptions, id: \.self) { option in
+                    Button(option) {
+                        filterOptions.toggleNSCAOption(option)
+                    }
+                    .buttonStyle(FilterButtonStyle(isSelected: filterOptions.selectedNSCAOptions.contains(option)))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - MonthsSection
+struct MonthsSection: View {
+    let allMonths: [String]
+    @ObservedObject var filterOptions: FilterOptions
+
+    var body: some View {
+        Section(header: Text("Months")) {
+            WrapHStack {
+                ForEach(allMonths, id: \.self) { month in
+                    Button(month) {
+                        filterOptions.toggleMonth(month)
+                    }
+                    .buttonStyle(FilterButtonStyle(isSelected: filterOptions.selectedMonths.contains(month)))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - ZonesSection
+struct ZonesSection: View {
+    @ObservedObject var filterOptions: FilterOptions
+
+    var body: some View {
+        Section(header: Text("Zones")) {
+            WrapHStack {
+                ForEach(FilterOptions.zones.keys.sorted(), id: \.self) { zone in
+                    Button(zone) {
+                        filterOptions.toggleZone(zone)
+                    }
+                    .buttonStyle(FilterButtonStyle(isSelected: filterOptions.selectedZones.contains(zone)))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - StatesSection
+struct StatesSection: View {
+    @ObservedObject var filterOptions: FilterOptions
+
+    var body: some View {
+        Section(header: Text("States")) {
+            NavigationLink(destination: RegionsView(selectedStates: $filterOptions.selectedStates)) {
+                HStack {
+                    Text("Select States / Regions")
+                    Spacer()
+                    Text("\(filterOptions.selectedStates.count) selected")
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+    }
+}
+
+
+
+// MARK: - TogglesSection
+struct TogglesSection: View {
+    @ObservedObject var filterOptions: FilterOptions
+
+    var body: some View {
+        Section {
+            Toggle("Future Shoots", isOn: $filterOptions.showFutureShoots)
+            Toggle("Notable Shoots", isOn: $filterOptions.showNotableShoots)
+            Toggle("Marked Shoots", isOn: $filterOptions.showMarkedShoots)
+        }
+    }
+}
+
+// MARK: - RegionsView
+struct RegionsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selectedStates: [String]
+
+    private let allStates: [String] = [
+        "California", "Texas", "New York", "Colorado", "Florida", "Illinois", "North Dakota", // Add all states here
+        // ...
+    ]
+
+    var body: some View {
+        List {
+            ForEach(allStates, id: \.self) { state in
+                MultipleSelectRow(
+                    label: state,
+                    isSelected: selectedStates.contains(state)
+                ) {
+                    toggleSelection(for: state)
+                }
+            }
+        }
+        .navigationTitle("Select States / Regions")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+    }
+
+    private func toggleSelection(for item: String) {
+        if selectedStates.contains(item) {
+            selectedStates.removeAll { $0 == item }
+        } else {
+            selectedStates.append(item)
+        }
+    }
+}
+
+
+
+// MARK: - MultipleSelectRow
+struct MultipleSelectRow: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - WrapHStack
+struct WrapHStack<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], spacing: 8) {
+            content
+        }
+    }
+}
+
+// MARK: - Preview
+#Preview {
+    FilterView(
+        filterOptions: FilterOptions(),
+        allNSCAOptions: ["NSSA", "NSCA"],
+        allMonths: Calendar.current.monthSymbols,
+        isPresented: .constant(true)
+    )
+}

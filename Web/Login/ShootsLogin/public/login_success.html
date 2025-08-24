@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login Success</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2em;
+    }
+    .param {
+      margin: 0.5em 0;
+    }
+  </style>
+</head>
+<body>
+<h1>Login Success</h1>
+<p>The following URL parameters were received:</p>
+<div id="paramList"></div>
+
+<script>
+  function getQueryParams() {
+    const params = {};
+    const queryString = window.location.search.slice(1);
+    const pairs = queryString.split('&');
+    for (let pair of pairs) {
+      if (!pair) continue;
+      const [key, value] = pair.split('=');
+      params[decodeURIComponent(key)] = decodeURIComponent(value || '');
+    }
+    return params;
+  }
+
+  const paramList = document.getElementById('paramList');
+  const params = getQueryParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const div = document.createElement('div');
+    div.className = 'param';
+    div.innerHTML = `<strong>${key}:</strong> ${value}`;
+    paramList.appendChild(div);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Logging Out...</title>
+  <link rel="stylesheet" href="style/styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    firebase.initializeApp(firebaseConfig);
+
+    // Log out and redirect
+    auth.signOut().then(() => {
+      console.log("User signed out");
+      window.location.href = "/index.html"; // Or your preferred return URL
+    }).catch((error) => {
+      console.error("Error signing out:", error);
+      document.body.innerText = "Error signing out. Please close the tab manually.";
+    });
+  </script>
+</head>
+<body>
+Logging you out...
+</body>
+</html>

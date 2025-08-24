@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Data Viewer</title>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.22/css/jquery.dataTables.min.css">
+     <style>
+        body {
+            font-family: 'Arial', sans-serif; /* Apply sans-serif font */
+            padding: 10px;
+        }
+        #csvTable {
+            font-size: 10px; /* Smaller font size for compact layout */
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <script src="https://cdn.datatables.net/1.10.22/js/jquery.dataTables.min.js"></script>
+</head>
+<body>
+    <h1>CSV Data Viewer</h1>
+    <table id="csvTable" class="display" style="width:100%">
+        <thead>
+            <tr>
+                <!-- Dynamically fill column headers from CSV here -->
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Data rows will be inserted here -->
+        </tbody>
+    </table>
+
+   <script>
+    $(document).ready(function() {
+        // Fetch the CSV file
+        $.ajax({
+            type: "GET",
+            url: "Geocoded_Combined_Shoot_Schedule_2024.csv",
+            dataType: "text",
+            success: function(data) {
+                processData(data);
+            }
+        });
+
+        // Process and load the CSV data into the table
+        function processData(data) {
+            var lines = data.split("\n");
+            var headers = lines[0].split(",").map(function(item) {
+                return '<th>' + item.trim() + '</th>';
+            }).join('');
+            $('#csvTable thead tr').html(headers);
+
+            var bodyHtml = lines.slice(1).map(function(line) {
+                var row = line.split(",").map(function(item) {
+                    return '<td>' + item.trim() + '</td>';
+                }).join('');
+                return '<tr>' + row + '</tr>';
+            }).join('');
+
+            $('#csvTable tbody').html(bodyHtml);
+
+            // Initialize DataTable with search and pagination features
+            $('#csvTable').DataTable({
+                "paging": true, // Enable pagination
+                "searching": true, // Enable searching
+                "info": true // Display info like "Showing 1 to 10 of 100 entries"
+            });
+        }
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--    <meta http-equiv="refresh" content="5; url=https://apps.postflight.co/p/shootsdb">-->
+
+  <title>ShootSchedule</title>
+  <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+  <link rel="stylesheet" href="style/styles.css">
+
+</head>
+<body>
+<div class="header">
+  <img src="images/shootsdb-icon.png" alt="ShootsDB Icon" height="24" width="24">
+  <h1>ShootSchedule</h1>
+</div>
+<div>
+  <img src="images/screenshot.png" alt="ShootsDB Screenshot" height="512">
+</div>
+<p>
+  Find (and shoot) more shoots with ShootSchedule, an easy to use web app for sifting through NSSA skeet and NSCA sporting
+  clays shoots data, building and sharing your shooting schedule for the year. It is free to use.
+</p>
+<div id="error-message"></div>
+<div class="button-container" id="authButtons">
+  <button class="button google-button" id="loginButton">Sign In With Google!</button>
+  <button class="button google-button" id="logoutButton" style="display: none;">Log Out</button>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const logoutButton = document.getElementById('logoutButton');
+  const errorMessageDiv = document.getElementById('error-message');
+  const googleAuthProvider = new firebase.auth.GoogleAuthProvider();
+
+  function isLocalhost() {
+    return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  }
+
+  function clearClickHandlers(buttonId) {
+    const oldButton = document.getElementById(buttonId);
+    if (!oldButton) return null;
+
+    const newButton = oldButton.cloneNode(true);
+    oldButton.parentNode.replaceChild(newButton, oldButton);
+    return newButton;
+  }
+
+  auth.onAuthStateChanged((user) => {
+    console.log('authStateChanged fired. User:', user);
+    const buttonId = 'loginButton';
+    const signInButton = clearClickHandlers(buttonId);
+    if (!signInButton) {
+      console.error('Sign-in button not found in DOM');
+      return;
+    }
+
+    if (user) {
+      console.log("User detected after page load. Attempting to fetch ID token...");
+      // Fetch a fresh token right when page loads (debugging purpose)
+      user.getIdToken(true)
+        .then((idToken) => {
+          console.log('ID token on page load (forced refresh):', idToken);
+        })
+        .catch((error) => {
+          console.error('Error fetching ID token on page load:', error);
+        });
+
+      signInButton.textContent = 'Launch!';
+      logoutButton.style.display = 'inline-block';
+
+      signInButton.addEventListener('click', () => {
+        console.log('Launch ShootsDB button clicked.');
+        user.getIdToken(true)
+          .then((idToken) => {
+            console.log('ID token after button click (forced refresh):', idToken);
+            const redirectUrl = isLocalhost()
+              ? `/login_success.html?token=${idToken}`
+              : `https://apps.postflight.co/p/shootsdb?token=${idToken}`;
+            window.location.href = redirectUrl;
+          })
+          .catch((error) => {
+            console.error('Error fetching ID token after button click:', error);
+            errorMessageDiv.textContent = error.message;
+          });
+      });
+
+    } else {
+      console.log("No user detected after page load.");
+      signInButton.textContent = 'Sign In With Google!';
+      logoutButton.style.display = 'none';
+
+      signInButton.addEventListener('click', () => {
+        console.log('Sign In With Google button clicked.');
+        auth.signInWithPopup(googleAuthProvider)
+          .then((result) => {
+            console.log('Google sign-in result:', result);
+            return result.user.getIdToken(true);  // Force refresh token after sign-in too
+          })
+          .then((idToken) => {
+            console.log('ID token after sign-in:', idToken);
+            setTimeout(() => {
+              const redirectUrl = isLocalhost()
+                ? `/login_success.html?token=${idToken}`
+                : `https://apps.postflight.co/p/shootsdb?token=${idToken}`;
+              window.location.href = redirectUrl;
+            }, 250);
+          })
+          .catch((error) => {
+            console.error('Google Sign-in error:', error);
+            errorMessageDiv.textContent = error.message;
+          });
+      });
+    }
+  });
+
+  logoutButton.addEventListener('click', () => {
+    console.log('Log Out button clicked.');
+    auth.signOut()
+      .then(() => {
+        console.log('User signed out successfully.');
+      })
+      .catch((error) => {
+        console.error('Error signing out:', error);
+      });
+  });
+</script>
+
+</body>
+</html>

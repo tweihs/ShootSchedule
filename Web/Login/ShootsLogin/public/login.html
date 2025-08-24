@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShootsDB - Login</title>
+  <link rel="stylesheet" href="style/styles.css">
+  <style>
+    .login-container {
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .google-button {
+      background-color: #4285F4;
+      color: white;
+    }
+
+    .apple-button {
+      background-color: #000;
+      color: white;
+    }
+
+  </style>
+</head>
+<body>
+<div class="login-container">
+  <div class="header">
+    <h1>ShootsDB Login</h1>
+  </div>
+
+  <p>
+    Log in to ShootsDB with your Google account (or can create one <a
+    href="https://accounts.google.com/signup">here)</a>.
+  </p>
+
+  <button class="button google-button" id="google-sign-in">Sign in with Google</button>
+  <!--  <button class="button apple-button" id="apple-sign-in">Sign in with Apple</button>-->
+  <div id="error-message"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="/js/app.js"></script>
+<script>
+  const googleSignInButton = document.getElementById('google-sign-in');
+  const errorMessageDiv = document.getElementById('error-message');
+
+  // Google Sign-in
+  const googleAuthProvider = new firebase.auth.GoogleAuthProvider();
+  googleSignInButton.addEventListener('click', () => {
+    auth.signInWithPopup(googleAuthProvider)
+      .then((result) => {
+        // User signed in successfully.
+        const user = result.user;
+
+        user.getIdToken().then(function(idToken) {
+          console.log('Firebase ID Token:', idToken);
+          const retoolAppUrlWithToken = 'https://apps.postflight.co/p/shootsdb?token=' + idToken;
+          window.location.href = retoolAppUrlWithToken;
+        }).catch(function(error) {
+          console.error('Error getting ID token:', error);
+          // Handle error getting token
+        });
+
+        console.log('Google Sign-in successful:', user);
+      })
+      .catch((error) => {
+        // Handle errors here.
+        const errorCode = error.code;
+        const errorMessage = error.message;
+        const email = error.email;
+        const credential = error.credential;
+        console.error('Google Sign-in error:', errorCode, errorMessage, email, credential);
+        errorMessageDiv.textContent = errorMessage;
+      });
+  });
+</script>
+</body>
+</html>
