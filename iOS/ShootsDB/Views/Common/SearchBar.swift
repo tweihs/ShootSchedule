@@ -1,0 +1,62 @@
+//
+//  SearchBar.swift
+//  ShootsDB
+//
+//  Created on 1/24/25.
+//
+
+import SwiftUI
+
+struct SearchBar: View {
+    @Binding var text: String
+    @State private var isEditing = false
+    
+    var body: some View {
+        HStack {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 8)
+                
+                TextField("Search shoots", text: $text)
+                    .padding(7)
+                    .onTapGesture {
+                        self.isEditing = true
+                    }
+                
+                if !text.isEmpty {
+                    Button(action: {
+                        self.text = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                            .padding(.trailing, 8)
+                    }
+                }
+            }
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(10)
+            
+            if isEditing {
+                Button("Cancel") {
+                    self.isEditing = false
+                    self.text = ""
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .padding(.trailing, 10)
+                .transition(.move(edge: .trailing))
+                .animation(.default, value: isEditing)
+            }
+        }
+    }
+}
+
+struct SearchBar_Previews: PreviewProvider {
+    @State static var searchText = ""
+    
+    static var previews: some View {
+        SearchBar(text: $searchText)
+            .padding()
+            .previewLayout(.sizeThatFits)
+    }
+}

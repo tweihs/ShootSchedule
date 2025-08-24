@@ -2,25 +2,36 @@
 //  ShootsDBApp.swift
 //  ShootsDB
 //
-//  Created by Tyson Weihs on 12/7/24.
+//  Created on 1/24/25.
 //
 
 import SwiftUI
 
 @main
 struct ShootsDBApp: App {
-    @State private var shootEvents: [Event] = []
-
+    @StateObject private var authManager = AuthenticationManager()
+    @StateObject private var dataManager = DataManager()
+    
     var body: some Scene {
         WindowGroup {
-            MainView(events: shootEvents)
+            ContentView()
+                .environmentObject(authManager)
+                .environmentObject(dataManager)
                 .onAppear {
-                    loadData()
+                    setupApp()
                 }
         }
     }
-
-    private func loadData() {
-        shootEvents = CSVParser.parseShootEvents(from: "Geocoded_Combined_Shoot_Schedule_2024")
+    
+    private func setupApp() {
+        // Configure appearance
+        UINavigationBar.appearance().largeTitleTextAttributes = [.foregroundColor: UIColor.label]
+        UINavigationBar.appearance().titleTextAttributes = [.foregroundColor: UIColor.label]
+        
+        // Load cached data
+        dataManager.loadCachedData()
+        
+        // Check authentication status
+        authManager.checkAuthenticationStatus()
     }
 }
