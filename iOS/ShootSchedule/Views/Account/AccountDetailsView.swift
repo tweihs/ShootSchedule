@@ -24,6 +24,8 @@ struct AccountDetailsView: View {
     @State private var showingCalendarSourceSelection = false
     @State private var availableCalendarSources: [(id: String, title: String, type: String)] = []
     @State private var currentCalendarInfo: (name: String, source: String)? = nil
+    @State private var databaseLastUpdated: Date?
+    @State private var shootCount: Int = 0
     private let locationManager = CLLocationManager()
     private let eventStore = EKEventStore()
     
@@ -170,7 +172,7 @@ struct AccountDetailsView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 
-                                // Calendar cleanup button
+                                // Calendar cleanup buttons
                                 Divider()
                                 
                                 Button(action: {
@@ -203,6 +205,98 @@ struct AccountDetailsView: View {
                                     }
                                 }
                                 .buttonStyle(PlainButtonStyle())
+                                
+                                Divider()
+                                
+                                Button(action: {
+                                    Task {
+                                        print("📅 🗑️ Manual calendar removal initiated by user")
+                                        await dataManager.removeAllShootEvents()
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: "trash")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(.red)
+                                            .frame(width: 24)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Remove All Events")
+                                                .font(.system(size: 15, weight: .medium))
+                                                .foregroundColor(.primary)
+                                            
+                                            Text("Delete all ShootSchedule calendar events")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.9))
+                        .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    
+                    // Database Section
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(title: "Database")
+                        
+                        VStack(spacing: 12) {
+                            // Last Updated
+                            HStack {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.blue)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Last Updated")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.primary)
+                                    
+                                    if let lastUpdated = databaseLastUpdated {
+                                        Text(formatDate(lastUpdated))
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("Loading...")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                            }
+                            
+                            Divider()
+                            
+                            // Shoot Count
+                            HStack {
+                                Image(systemName: "target")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.blue)
+                                    .frame(width: 24)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Shoot Count")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("\(shootCount) shoots")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                Spacer()
                             }
                         }
                         .padding()
@@ -261,6 +355,9 @@ struct AccountDetailsView: View {
                 isCalendarSyncEnabled = dataManager.isCalendarSyncEnabled
                 // Load current calendar info
                 currentCalendarInfo = dataManager.getCurrentCalendarInfo()
+                
+                // Load database info
+                loadDatabaseInfo()
                 
                 // Debug available calendars when settings view appears
                 // Use background queue to avoid blocking UI
@@ -508,6 +605,42 @@ struct AccountDetailsView: View {
                 }
             }
         }
+    }
+    
+    private func loadDatabaseInfo() {
+        // Get database info from SQLiteService
+        let sqliteService = SQLiteService()
+        
+        // Get database file modification date
+        if let databaseURL = Bundle.main.url(forResource: "shoots", withExtension: "sqlite") {
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
+                databaseLastUpdated = attributes[.modificationDate] as? Date
+            } catch {
+                print("Error getting database file attributes: \(error)")
+                databaseLastUpdated = nil
+            }
+        }
+        
+        // Get shoot count from DataManager
+        shootCount = dataManager.shoots.count
+        
+        // If no shoots loaded yet, try to get from database directly
+        if shootCount == 0 {
+            Task {
+                let shoots = sqliteService.loadShoots()
+                await MainActor.run {
+                    shootCount = shoots.count
+                }
+            }
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
     
 }

@@ -357,6 +357,14 @@ class DataManager: ObservableObject {
                 latitude: Double.random(in: 25...49),
                 longitude: Double.random(in: -125...(-70)),
                 notabilityLevelRaw: nil, // Will fallback to computed logic
+                morningTempF: nil,
+                afternoonTempF: nil,
+                morningTempC: nil,
+                afternoonTempC: nil,
+                durationDays: nil,
+                morningTempBand: nil,
+                afternoonTempBand: nil,
+                estimationMethod: nil,
                 isMarked: false
             )
             allShoots.append(pastShoot)
@@ -389,6 +397,14 @@ class DataManager: ObservableObject {
                 latitude: Double.random(in: 25...49),
                 longitude: Double.random(in: -125...(-70)),
                 notabilityLevelRaw: nil, // Will fallback to computed logic
+                morningTempF: nil,
+                afternoonTempF: nil,
+                morningTempC: nil,
+                afternoonTempC: nil,
+                durationDays: nil,
+                morningTempBand: nil,
+                afternoonTempBand: nil,
+                estimationMethod: nil,
                 isMarked: false
             )
             allShoots.append(futureShoot)
@@ -423,6 +439,14 @@ class DataManager: ObservableObject {
                 latitude: nil,
                 longitude: nil,
                 notabilityLevelRaw: nil, // Will fallback to computed logic
+                morningTempF: nil,
+                afternoonTempF: nil,
+                morningTempC: nil,
+                afternoonTempC: nil,
+                durationDays: nil,
+                morningTempBand: nil,
+                afternoonTempBand: nil,
+                estimationMethod: nil,
                 isMarked: false
             )
             allShoots.append(extraShoot)
@@ -1464,9 +1488,44 @@ class DataManager: ObservableObject {
     
     func removeShootScheduleCalendar() async {
         print("📅 🗑️ Starting calendar removal process...")
+        print("📅 🔍 Calendar permission status: \(hasCalendarPermission ? "GRANTED" : "DENIED")")
+        
+        // List all calendars first for debugging
+        let allCalendars = eventStore.calendars(for: .event)
+        print("📅 🔍 Found \(allCalendars.count) total calendars in system:")
+        for cal in allCalendars {
+            print("📅   - '\(cal.title)' (ID: \(cal.calendarIdentifier), Source: \(cal.source?.title ?? "Unknown"))")
+        }
         
         guard let calendar = shootScheduleCalendar else { 
-            print("📅 ⚠️ No ShootSchedule calendar to remove - calendar is nil")
+            print("📅 ⚠️ No ShootSchedule calendar reference stored - searching for calendar by name...")
+            
+            // Try to find calendar by name as fallback
+            let shootCalendars = allCalendars.filter { $0.title == calendarTitle }
+            print("📅 🔍 Found \(shootCalendars.count) calendars with title '\(calendarTitle)':")
+            
+            for cal in shootCalendars {
+                print("📅   - Calendar '\(cal.title)' (ID: \(cal.calendarIdentifier))")
+                // Try to remove each one
+                do {
+                    let predicate = eventStore.predicateForEvents(
+                        withStart: Date().addingTimeInterval(-365 * 24 * 3600),
+                        end: Date().addingTimeInterval(365 * 24 * 3600),
+                        calendars: [cal]
+                    )
+                    let events = eventStore.events(matching: predicate)
+                    print("📅 🗑️ Removing calendar '\(cal.title)' with \(events.count) events...")
+                    
+                    try eventStore.removeCalendar(cal, commit: true)
+                    print("📅 ✅ Successfully removed calendar '\(cal.title)'")
+                } catch {
+                    print("❌ Failed to remove calendar '\(cal.title)': \(error)")
+                }
+            }
+            
+            if shootCalendars.isEmpty {
+                print("📅 ✅ No ShootSchedule calendars found to remove")
+            }
             return 
         }
         
@@ -1481,36 +1540,143 @@ class DataManager: ObservableObject {
         let existingEvents = eventStore.events(matching: predicate)
         print("📅 🗑️ Calendar contains \(existingEvents.count) events that will be removed")
         
+        // Show some sample events
+        if existingEvents.count > 0 {
+            print("📅 🔍 Sample events to be removed:")
+            for (index, event) in existingEvents.prefix(3).enumerated() {
+                print("📅   \(index + 1). '\(event.title ?? "No Title")' on \(event.startDate)")
+            }
+            if existingEvents.count > 3 {
+                print("📅   ... and \(existingEvents.count - 3) more events")
+            }
+        }
+        
         do {
             try eventStore.removeCalendar(calendar, commit: true)
             shootScheduleCalendar = nil
             
             // Clear stored calendar ID
             UserDefaults.standard.removeObject(forKey: "shootScheduleCalendarId")
+            UserDefaults.standard.removeObject(forKey: "hasSelectedCalendarSource")
             
             print("📅 ✅ Successfully removed ShootSchedule calendar '\(calendar.title)' and all \(existingEvents.count) events")
             print("📅 ✅ Cleared calendar reference and UserDefaults storage")
             
             // Double-check that calendar was actually removed
-            let allCalendars = eventStore.calendars(for: .event)
-            let remainingShootCalendars = allCalendars.filter { $0.title == "ShootSchedule Events" }
+            let updatedCalendars = eventStore.calendars(for: .event)
+            let remainingShootCalendars = updatedCalendars.filter { $0.title == calendarTitle }
             if remainingShootCalendars.isEmpty {
-                print("📅 ✅ Confirmed: No 'ShootSchedule Events' calendars remain in system")
+                print("📅 ✅ Confirmed: No '\(calendarTitle)' calendars remain in system")
             } else {
-                print("📅 ⚠️ Warning: Found \(remainingShootCalendars.count) remaining 'ShootSchedule Events' calendars")
+                print("📅 ⚠️ Warning: Found \(remainingShootCalendars.count) remaining '\(calendarTitle)' calendars:")
+                for cal in remainingShootCalendars {
+                    print("📅 ⚠️   - '\(cal.title)' (ID: \(cal.calendarIdentifier))")
+                }
             }
             
         } catch {
             print("❌ Failed to remove ShootSchedule calendar: \(error)")
             print("❌ Calendar ID: \(calendar.calendarIdentifier), Title: '\(calendar.title)'")
+            print("❌ Error type: \(type(of: error))")
         }
     }
     
     func removeAllShootEvents() async {
-        print("📅 🗑️ removeAllShootEvents() called - will remove entire ShootSchedule calendar")
-        // For backwards compatibility, call removeShootScheduleCalendar
-        await removeShootScheduleCalendar()
-        print("📅 🗑️ removeAllShootEvents() completed")
+        print("📅 🗑️ removeAllShootEvents() called - will remove all synced shoot events")
+        
+        guard hasCalendarPermission else { 
+            print("📅 ⚠️ No calendar permission - cannot remove events")
+            return 
+        }
+        
+        guard let calendar = shootScheduleCalendar else { 
+            print("📅 ⚠️ No ShootSchedule calendar reference - searching for events to remove...")
+            
+            // Try to find all ShootSchedule events even without calendar reference
+            let allCalendars = eventStore.calendars(for: .event)
+            for cal in allCalendars {
+                await removeAllEventsFromCalendar(cal)
+            }
+            return
+        }
+        
+        print("📅 🔍 Removing events from calendar: '\(calendar.title)'")
+        
+        // Method 1: Remove all events that have ShootID in notes
+        await removeAllEventsFromCalendar(calendar)
+        
+        // Method 2: Also iterate through marked shoots and remove them individually
+        // This ensures we catch any events that might not have proper ShootID notes
+        let markedShootsToRemove = shoots.filter { markedShootIds.contains($0.id) }
+        print("📅 🔍 Found \(markedShootsToRemove.count) marked shoots to remove from calendar")
+        
+        for shoot in markedShootsToRemove {
+            print("📅 🗑️ Removing events for shoot: \(shoot.shootName) (ID: \(shoot.id))")
+            await removeAllEventsForShoot(shoot.id)
+        }
+        
+        print("📅 ✅ removeAllShootEvents() completed - removed all shoot events")
+    }
+    
+    private func removeAllEventsFromCalendar(_ calendar: EKCalendar) async {
+        let startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+        let endDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+        
+        let predicate = eventStore.predicateForEvents(
+            withStart: startDate,
+            end: endDate,
+            calendars: [calendar]
+        )
+        
+        let allEvents = eventStore.events(matching: predicate)
+        
+        // Filter for events that have ShootID in notes (our events)
+        let shootEvents = allEvents.filter { event in
+            event.notes?.contains("ShootID:") == true
+        }
+        
+        if shootEvents.count > 0 {
+            print("📅 🗑️ Found \(shootEvents.count) shoot events to remove from calendar '\(calendar.title)'")
+            
+            // Show sample events
+            for (index, event) in shootEvents.prefix(3).enumerated() {
+                let shootId = extractShootIDFromNotes(event.notes)
+                print("📅   \(index + 1). '\(event.title ?? "No Title")' (ShootID: \(shootId ?? -1))")
+            }
+            if shootEvents.count > 3 {
+                print("📅   ... and \(shootEvents.count - 3) more events")
+            }
+            
+            // Remove each event
+            var removedCount = 0
+            var failedCount = 0
+            
+            for event in shootEvents {
+                do {
+                    try eventStore.remove(event, span: .thisEvent)
+                    removedCount += 1
+                } catch {
+                    print("📅 ❌ Failed to remove event '\(event.title ?? "Unknown")': \(error)")
+                    failedCount += 1
+                }
+            }
+            
+            // Commit all changes
+            if removedCount > 0 {
+                do {
+                    try eventStore.commit()
+                    print("📅 ✅ Successfully removed \(removedCount) events from calendar '\(calendar.title)'")
+                } catch {
+                    print("📅 ❌ Failed to commit calendar changes: \(error)")
+                }
+            }
+            
+            if failedCount > 0 {
+                print("📅 ⚠️ Failed to remove \(failedCount) events")
+            }
+        } else {
+            print("📅 ℹ️ No shoot events found in calendar '\(calendar.title)'")
+        }
     }
     
     // MARK: - Timezone Handling

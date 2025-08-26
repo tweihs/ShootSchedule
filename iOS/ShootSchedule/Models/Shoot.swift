@@ -58,6 +58,16 @@ struct Shoot: Identifiable, Codable, Hashable {
     let longitude: Double?
     let notabilityLevelRaw: Int? // Pre-calculated: 0=none, 1=other, 2=state, 3=world
     
+    // Weather data
+    let morningTempF: Int?
+    let afternoonTempF: Int?
+    let morningTempC: Int?
+    let afternoonTempC: Int?
+    let durationDays: Int?
+    let morningTempBand: String?
+    let afternoonTempBand: String?
+    let estimationMethod: String?
+    
     // Local properties
     var isMarked: Bool = false
     
@@ -86,6 +96,14 @@ struct Shoot: Identifiable, Codable, Hashable {
         case latitude
         case longitude
         case notabilityLevelRaw = "notability_level"
+        case morningTempF = "morning_temp_f"
+        case afternoonTempF = "afternoon_temp_f"
+        case morningTempC = "morning_temp_c"
+        case afternoonTempC = "afternoon_temp_c"
+        case durationDays = "duration_days"
+        case morningTempBand = "morning_temp_band"
+        case afternoonTempBand = "afternoon_temp_band"
+        case estimationMethod = "estimation_method"
         case isMarked
     }
     
@@ -186,13 +204,42 @@ struct Shoot: Identifiable, Codable, Hashable {
     
     var displayLabel: String {
         if let eventType = eventType, !eventType.isEmpty {
-            if isNotable, let shootType = shootType, !shootType.isEmpty {
-                return "\(eventType) \(shootType) \(shootName)"
-            } else {
-                return "\(eventType) \(shootName)"
-            }
+            return "\(eventType) \(shootName)"
         }
         return shootName
+    }
+    
+    // Weather computed properties
+    var duration: Int {
+        // Use database value if available and valid, otherwise calculate
+        if let durationDays = durationDays, durationDays > 0 {
+            return durationDays
+        }
+        
+        guard let endDate = endDate else { return 1 }
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.day], from: startDate, to: endDate)
+        return max(1, (components.day ?? 0) + 1)
+    }
+    
+    var durationText: String {
+        let days = duration
+        return days == 1 ? "1 day" : "\(days) days"
+    }
+    
+    var temperatureDisplay: String? {
+        // Prefer user's temperature preference
+        let useFahrenheit = UserDefaults.standard.object(forKey: "useFahrenheit") != nil 
+            ? UserDefaults.standard.bool(forKey: "useFahrenheit")
+            : true
+        
+        if useFahrenheit, let morning = morningTempF, let afternoon = afternoonTempF {
+            return "\(morning)°F-\(afternoon)°F"
+        } else if !useFahrenheit, let morning = morningTempC, let afternoon = afternoonTempC {
+            return "\(morning)°C-\(afternoon)°C"
+        }
+        
+        return nil
     }
 }
 
@@ -214,6 +261,23 @@ class FilterOptions: ObservableObject {
     @Published var showNotableOnly = false
     @Published var showMarkedOnly = false
     
+    private var workItem: DispatchWorkItem?
+    private let searchQueue = DispatchQueue(label: "search-queue", qos: .userInitiated)
+    
+    // Cache for state mappings to improve performance
+    private static let stateMapping: [String: String] = [
+        "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas", "ca": "california",
+        "co": "colorado", "ct": "connecticut", "de": "delaware", "fl": "florida", "ga": "georgia",
+        "hi": "hawaii", "id": "idaho", "il": "illinois", "in": "indiana", "ia": "iowa",
+        "ks": "kansas", "ky": "kentucky", "la": "louisiana", "me": "maine", "md": "maryland",
+        "ma": "massachusetts", "mi": "michigan", "mn": "minnesota", "ms": "mississippi", "mo": "missouri",
+        "mt": "montana", "ne": "nebraska", "nv": "nevada", "nh": "new hampshire", "nj": "new jersey",
+        "nm": "new mexico", "ny": "new york", "nc": "north carolina", "nd": "north dakota", "oh": "ohio",
+        "ok": "oklahoma", "or": "oregon", "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina",
+        "sd": "south dakota", "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont",
+        "va": "virginia", "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming"
+    ]
+    
     func reset() {
         searchText = ""
         selectedAffiliations.removeAll()
@@ -225,28 +289,23 @@ class FilterOptions: ObservableObject {
     }
     
     func apply(to shoots: [Shoot]) -> [Shoot] {
-        print("🔍 STARTING FILTER: Total shoots=\(shoots.count)")
-        print("🔍 FILTER SETTINGS: search='\(searchText)', affiliations=\(selectedAffiliations.count), months=\(selectedMonths.count), states=\(selectedStates.count), future=\(showFutureOnly), notable=\(showNotableOnly), marked=\(showMarkedOnly)")
-        
         var remainingShoots = shoots
-        print("🔍 AFTER INITIAL: \(remainingShoots.count) shoots")
         
-        // Search text filter with improved multi-term matching
+        // Search text filter with optimized multi-term matching
         if !searchText.isEmpty {
             remainingShoots = remainingShoots.filter { shoot in
                 return searchMatches(shoot: shoot, searchText: searchText)
             }
-            print("🔍 AFTER SEARCH TEXT '\(searchText)': \(remainingShoots.count) shoots")
         }
         
         // Affiliation filter
         if !selectedAffiliations.isEmpty {
             remainingShoots = remainingShoots.filter { shoot in
-                selectedAffiliations.contains { affiliation in
-                    shoot.eventType?.contains(affiliation.rawValue) ?? false
+                guard let eventType = shoot.eventType else { return false }
+                return selectedAffiliations.contains { affiliation in
+                    eventType.contains(affiliation.rawValue)
                 }
             }
-            print("🔍 AFTER AFFILIATIONS \(selectedAffiliations): \(remainingShoots.count) shoots")
         }
         
         // Month filter
@@ -255,7 +314,6 @@ class FilterOptions: ObservableObject {
                 let month = Calendar.current.component(.month, from: shoot.startDate)
                 return selectedMonths.contains(month)
             }
-            print("🔍 AFTER MONTHS \(selectedMonths): \(remainingShoots.count) shoots")
         }
         
         // State filter
@@ -264,28 +322,23 @@ class FilterOptions: ObservableObject {
                 guard let state = shoot.state else { return false }
                 return selectedStates.contains(state)
             }
-            print("🔍 AFTER STATES \(selectedStates): \(remainingShoots.count) shoots")
         }
         
         // Future filter
         if showFutureOnly {
             remainingShoots = remainingShoots.filter { $0.isFuture }
-            print("🔍 AFTER FUTURE ONLY: \(remainingShoots.count) shoots")
         }
         
         // Notable filter
         if showNotableOnly {
             remainingShoots = remainingShoots.filter { $0.isNotable }
-            print("🔍 AFTER NOTABLE ONLY: \(remainingShoots.count) shoots")
         }
         
         // Marked filter
         if showMarkedOnly {
             remainingShoots = remainingShoots.filter { $0.isMarked }
-            print("🔍 AFTER MARKED ONLY: \(remainingShoots.count) shoots")
         }
         
-        print("🔍 FINAL RESULT: \(remainingShoots.count) shoots")
         return remainingShoots
     }
     
@@ -297,7 +350,7 @@ class FilterOptions: ObservableObject {
         // If no valid search terms, return true
         guard !searchTerms.isEmpty else { return true }
         
-        // Get all searchable text from the shoot
+        // Get all searchable text from the shoot (optimized)
         let shootName = shoot.shootName.lowercased()
         let clubName = shoot.clubName.lowercased()
         let city = shoot.city?.lowercased() ?? ""
@@ -308,36 +361,25 @@ class FilterOptions: ObservableObject {
         // Create a combined searchable string
         let combinedText = "\(shootName) \(clubName) \(city) \(state) \(eventType) \(shootType)"
         
-        // State abbreviation to full name mapping
-        let stateMapping: [String: String] = [
-            "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas", "ca": "california",
-            "co": "colorado", "ct": "connecticut", "de": "delaware", "fl": "florida", "ga": "georgia",
-            "hi": "hawaii", "id": "idaho", "il": "illinois", "in": "indiana", "ia": "iowa",
-            "ks": "kansas", "ky": "kentucky", "la": "louisiana", "me": "maine", "md": "maryland",
-            "ma": "massachusetts", "mi": "michigan", "mn": "minnesota", "ms": "mississippi", "mo": "missouri",
-            "mt": "montana", "ne": "nebraska", "nv": "nevada", "nh": "new hampshire", "nj": "new jersey",
-            "nm": "new mexico", "ny": "new york", "nc": "north carolina", "nd": "north dakota", "oh": "ohio",
-            "ok": "oklahoma", "or": "oregon", "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina",
-            "sd": "south dakota", "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont",
-            "va": "virginia", "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming"
-        ]
-        
         // All terms must match somewhere in the shoot data
         return searchTerms.allSatisfy { term in
-            // Direct text match
+            // Direct text match (most common case)
             if combinedText.contains(term) {
                 return true
             }
             
             // Check if term is a state abbreviation and state matches full name
-            if let fullStateName = stateMapping[term] {
+            if let fullStateName = Self.stateMapping[term] {
                 return state.contains(fullStateName) || city.contains(fullStateName)
             }
             
             // Check if term is a state full name and state matches abbreviation
-            for (abbrev, fullName) in stateMapping {
-                if term.contains(fullName) && state.contains(abbrev) {
-                    return true
+            // Only check if term is longer than 3 characters to avoid unnecessary loops
+            if term.count > 3 {
+                for (abbrev, fullName) in Self.stateMapping {
+                    if term.contains(fullName) && state.contains(abbrev) {
+                        return true
+                    }
                 }
             }
             

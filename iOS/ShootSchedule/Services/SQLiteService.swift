@@ -31,12 +31,18 @@ class SQLiteService: ObservableObject {
     }
     
     private func setupDatabase() {
-        // First, check if we have a bundled database
-        if let bundledURL = bundledDatabaseURL, !FileManager.default.fileExists(atPath: databaseURL.path) {
-            // Copy bundled database to Documents directory
+        // Always use the bundled database if it exists (to get latest weather data)
+        if let bundledURL = bundledDatabaseURL {
             do {
+                // Remove existing database if it exists
+                if FileManager.default.fileExists(atPath: databaseURL.path) {
+                    try FileManager.default.removeItem(at: databaseURL)
+                    print("Removed old SQLite database from Documents directory")
+                }
+                
+                // Copy fresh bundled database to Documents directory
                 try FileManager.default.copyItem(at: bundledURL, to: databaseURL)
-                print("Copied bundled SQLite database to Documents directory")
+                print("Copied fresh bundled SQLite database to Documents directory")
             } catch {
                 print("Failed to copy bundled database: \(error)")
             }
@@ -124,7 +130,9 @@ class SQLiteService: ObservableObject {
                      WHEN LOWER(TRIM("Shoot Type")) LIKE '%state%' THEN 2
                      WHEN TRIM("Shoot Type") IS NOT NULL AND LOWER(TRIM("Shoot Type")) != 'none' AND TRIM("Shoot Type") != '' THEN 1
                      ELSE 0
-                   END as notability_level
+                   END as notability_level,
+                   "morning_temp_f", "afternoon_temp_f", "morning_temp_c", "afternoon_temp_c", 
+                   "duration_days", "morning_temp_band", "afternoon_temp_band", "estimation_method"
             FROM shoots
             WHERE strftime('%Y', "Start Date") >= '\(currentYear)'
             ORDER BY "Start Date" ASC
@@ -159,6 +167,16 @@ class SQLiteService: ObservableObject {
                 let longitude = sqlite3_column_type(statement, 21) != SQLITE_NULL ? sqlite3_column_double(statement, 21) : nil
                 let notabilityLevel = Int(sqlite3_column_int(statement, 22))
                 
+                // Weather fields
+                let morningTempF = sqlite3_column_type(statement, 23) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 23)) : nil
+                let afternoonTempF = sqlite3_column_type(statement, 24) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 24)) : nil
+                let morningTempC = sqlite3_column_type(statement, 25) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 25)) : nil
+                let afternoonTempC = sqlite3_column_type(statement, 26) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 26)) : nil
+                let durationDays = sqlite3_column_type(statement, 27) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 27)) : nil
+                let morningTempBand = sqlite3_column_text(statement, 28) != nil ? String(cString: sqlite3_column_text(statement, 28)!) : nil
+                let afternoonTempBand = sqlite3_column_text(statement, 29) != nil ? String(cString: sqlite3_column_text(statement, 29)!) : nil
+                let estimationMethod = sqlite3_column_text(statement, 30) != nil ? String(cString: sqlite3_column_text(statement, 30)!) : nil
+                
                 let shoot = Shoot(
                     id: shootId,
                     shootName: shootName,
@@ -184,6 +202,14 @@ class SQLiteService: ObservableObject {
                     latitude: latitude,
                     longitude: longitude,
                     notabilityLevelRaw: notabilityLevel,
+                    morningTempF: morningTempF,
+                    afternoonTempF: afternoonTempF,
+                    morningTempC: morningTempC,
+                    afternoonTempC: afternoonTempC,
+                    durationDays: durationDays,
+                    morningTempBand: morningTempBand,
+                    afternoonTempBand: afternoonTempBand,
+                    estimationMethod: estimationMethod,
                     isMarked: false
                 )
                 shoots.append(shoot)

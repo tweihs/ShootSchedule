@@ -23,34 +23,65 @@ struct ShootDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     // Title and Date Row
                     HStack(alignment: .top) {
-                        Text(shoot.displayLabel.uppercased())
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.primary)
-                            .lineLimit(3)
-                            .truncationMode(.tail)
+                        VStack(alignment: .leading, spacing: 6) {
+                            // Event Name
+                            Text(shoot.displayLabel.uppercased())
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.primary)
+                                .lineLimit(3)
+                                .truncationMode(.tail)
+                                .multilineTextAlignment(.leading)
+                            
+                            // Tags Row
+                            HStack(spacing: 6) {
+                                // Notability Tag
+                                if shoot.notabilityLevel != .none {
+                                    Text(notabilityDisplayText(for: shoot.notabilityLevel))
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
+                                        )
+                                }
+                                
+                                // Duration Tag
+                                Text(shoot.durationText)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
+                                    )
+                                
+                                // Weather Tag (if available)
+                                if let temperatureDisplay = shoot.temperatureDisplay {
+                                    Text(temperatureDisplay)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
+                                        )
+                                }
+                                
+                                Spacer()
+                            }
+                        }
                         
                         Spacer()
                         
-                        VStack(alignment: .trailing, spacing: 4) {
+                        VStack(alignment: .trailing, spacing: 2) {
                             Text(shoot.userFriendlyDate)
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(.primary)
                                 .multilineTextAlignment(.trailing)
-                            
-                            // Notability Tag
-                            if shoot.notabilityLevel != .none {
-                                Text(notabilityDisplayText(for: shoot.notabilityLevel))
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
-                                    )
-                            }
-                            
-                            // TemperatureDurationView(shoot: shoot) - Hidden for now
                         }
                     }
                     
@@ -103,8 +134,8 @@ struct ShootDetailView: View {
                         Marker("", coordinate: coordinates)
                             .tint(.blue)
                     }
-                    .onMapCameraChange(frequency: .continuous) { context in
-                        // Keep map centered on club location during zoom
+                    .onMapCameraChange(frequency: .onEnd) { context in
+                        // Recenter map on club location when user finishes zooming
                         let newRegion = MKCoordinateRegion(
                             center: coordinates, // Always use club coordinates as center
                             span: context.region.span // Keep the user's zoom level
@@ -209,18 +240,6 @@ struct ShootDetailView: View {
         }
     }
     
-    private func notabilityDisplayText(for level: ShootNotabilityLevel) -> String {
-        switch level {
-        case .world:
-            return "World"
-        case .state:
-            return "State"
-        case .other:
-            return "Regional"
-        case .none:
-            return ""
-        }
-    }
     
     
     private func buildFullAddress() -> String? {
@@ -281,98 +300,21 @@ struct ShootDetailView: View {
             MKLaunchOptionsMapTypeKey: NSNumber(value: MKMapType.standard.rawValue)
         ])
     }
+    
+    private func notabilityDisplayText(for level: ShootNotabilityLevel) -> String {
+        switch level {
+        case .world:
+            return "World"
+        case .state:
+            return "State"
+        case .other:
+            return "Regional"
+        case .none:
+            return ""
+        }
+    }
 }
 
-// MARK: - Temperature Duration Component
-struct TemperatureDurationView: View {
-    let shoot: Shoot
-    @State private var useFahrenheit: Bool = true
-    
-    var body: some View {
-        Text(buildDurationAndTempText())
-            .font(.system(size: 13))
-            .foregroundColor(.secondary)
-            .multilineTextAlignment(.trailing)
-            .onAppear {
-                loadTemperaturePreference()
-            }
-    }
-    
-    private func buildDurationAndTempText() -> String {
-        let duration = calculateShootDuration()
-        let temps = getHistoricalTemperatures()
-        
-        let morningTemp = convertTemperature(temps.morning)
-        let afternoonTemp = convertTemperature(temps.afternoon)
-        let unit = temperatureUnit()
-        
-        let dayText = duration == 1 ? "Day" : "Days"
-        return "\(duration) \(dayText) (\(morningTemp)\(unit) - \(afternoonTemp)\(unit))"
-    }
-    
-    private func convertTemperature(_ fahrenheit: Int) -> Int {
-        if useFahrenheit {
-            return fahrenheit
-        } else {
-            // Convert F to C: (F - 32) * 5/9
-            return Int((Double(fahrenheit) - 32.0) * 5.0 / 9.0)
-        }
-    }
-    
-    private func temperatureUnit() -> String {
-        return useFahrenheit ? "°F" : "°C"
-    }
-    
-    private func loadTemperaturePreference() {
-        useFahrenheit = UserDefaults.standard.object(forKey: "useFahrenheit") != nil 
-            ? UserDefaults.standard.bool(forKey: "useFahrenheit")
-            : true
-    }
-    
-    private func calculateShootDuration() -> Int {
-        guard let endDate = shoot.endDate else { return 1 }
-        
-        let calendar = Calendar.current
-        let components = calendar.dateComponents([.day], from: shoot.startDate, to: endDate)
-        return max(1, (components.day ?? 0) + 1)
-    }
-    
-    private func getHistoricalTemperatures() -> (morning: Int, afternoon: Int) {
-        let month = Calendar.current.component(.month, from: shoot.startDate)
-        
-        // Base afternoon high temperatures by month (rough averages for US at 3 PM)
-        let baseHighTemps = [1: 50, 2: 55, 3: 65, 4: 75, 5: 83, 6: 90, 
-                            7: 93, 8: 92, 9: 85, 10: 75, 11: 63, 12: 53]
-        
-        var afternoonHigh = baseHighTemps[month] ?? 75
-        
-        // Add regional variation based on state
-        if let state = shoot.state {
-            switch state {
-            case "FL", "TX", "AZ", "CA", "NV":
-                afternoonHigh += 8
-            case "MT", "WY", "ND", "SD", "MN", "WI", "ME", "VT", "NH":
-                afternoonHigh -= 8
-            case "WA", "OR", "ID":
-                afternoonHigh -= 3
-            default:
-                break
-            }
-        }
-        
-        // Morning temperature difference by season
-        let tempDifference: Int
-        switch month {
-        case 12, 1, 2: tempDifference = 12
-        case 3, 4, 11: tempDifference = 18
-        case 5, 6, 7, 8, 9, 10: tempDifference = 22
-        default: tempDifference = 18
-        }
-        
-        let morningLow = max(afternoonHigh - tempDifference, 20)
-        return (morning: morningLow, afternoon: afternoonHigh)
-    }
-}
 
 // Helper struct for map annotation
 struct MapPin: Identifiable {
@@ -415,6 +357,14 @@ struct ShootDetailView_Previews: PreviewProvider {
             latitude: 34.5,
             longitude: -89.9,
             notabilityLevelRaw: nil,
+            morningTempF: 68,
+            afternoonTempF: 87,
+            morningTempC: 20,
+            afternoonTempC: 31,
+            durationDays: 4,
+            morningTempBand: "Comfortable",
+            afternoonTempBand: "Hot",
+            estimationMethod: "historical",
             isMarked: false
         )
     }

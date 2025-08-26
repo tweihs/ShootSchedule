@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 // TODO: Implement tab view with Events and Clubs tabs
 // - Events tab: Current shoot schedule functionality (search bar, filters, list/map view)
@@ -19,10 +20,10 @@ struct ContentView: View {
     @State private var showingAccountDetails = false
     @State private var selectedViewMode: ViewMode = .list
     @State private var selectedShoot: Shoot? = nil
+    @State private var filteredShoots: [Shoot] = []
+    @State private var isFiltering = false
     
-    var filteredShoots: [Shoot] {
-        filterOptions.apply(to: dataManager.shoots)
-    }
+    private let filterQueue = DispatchQueue(label: "filter-queue", qos: .userInitiated)
     
     var body: some View {
         NavigationView {
@@ -90,6 +91,32 @@ struct ContentView: View {
             .onAppear {
                 // Set filter options reference for auto-disable functionality
                 dataManager.filterOptions = filterOptions
+                // Initial filter application
+                applyFilters()
+            }
+            .onReceive(filterOptions.$searchText.debounce(for: .milliseconds(300), scheduler: RunLoop.main)) { _ in
+                applyFilters()
+            }
+            .onReceive(filterOptions.$selectedAffiliations) { _ in
+                applyFilters()
+            }
+            .onReceive(filterOptions.$selectedMonths) { _ in
+                applyFilters()
+            }
+            .onReceive(filterOptions.$selectedStates) { _ in
+                applyFilters()
+            }
+            .onReceive(filterOptions.$showFutureOnly) { _ in
+                applyFilters()
+            }
+            .onReceive(filterOptions.$showNotableOnly) { _ in
+                applyFilters()
+            }
+            .onReceive(filterOptions.$showMarkedOnly) { _ in
+                applyFilters()
+            }
+            .onChange(of: dataManager.shoots) { _ in
+                applyFilters()
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -102,6 +129,21 @@ struct ContentView: View {
                 .environmentObject(dataManager)
                 .background(Color(red: 1.0, green: 0.992, blue: 0.973))
         }
+    }
+    
+    private func applyFilters() {
+        let currentShoots = dataManager.shoots
+        let currentFilterOptions = filterOptions
+        
+        filterQueue.async {
+            let filtered = currentFilterOptions.apply(to: currentShoots)
+            DispatchQueue.main.async {
+                self.filteredShoots = filtered
+                self.isFiltering = false
+            }
+        }
+        
+        isFiltering = true
     }
 }
 
