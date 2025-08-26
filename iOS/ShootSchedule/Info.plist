@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ShootSchedule uses your location to show nearby shooting events and help you find shoots in your area.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>ShootSchedule uses your location to show nearby shooting events and help you find shoots in your area.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>ShootSchedule needs access to your calendars to sync marked shoots. We can add events to your existing calendars (like Google Calendar) or create a dedicated ShootSchedule calendar.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>ShootSchedule needs calendar access to sync your marked shoots as calendar events.</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+</dict>
+</plist>

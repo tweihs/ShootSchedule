@@ -1,0 +1,2 @@
+// Location permissions for ShootSchedule
+INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = ShootSchedule uses your location to show nearby shooting events and help you find shoots in your area.
