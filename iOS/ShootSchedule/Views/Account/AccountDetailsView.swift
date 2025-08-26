@@ -18,7 +18,6 @@ struct AccountDetailsView: View {
     @State private var calendarPermissionStatus: EKAuthorizationStatus = .notDetermined
     @State private var useFahrenheit: Bool = true
     @State private var isCalendarSyncEnabled: Bool = false
-    @State private var permissionCheckTimer: Timer?
     @State private var showingPermissionAlert = false
     @State private var permissionAlertType: PermissionType = .calendar
     @State private var showingCalendarSourceSelection = false
@@ -172,72 +171,6 @@ struct AccountDetailsView: View {
                                 }
                                 .buttonStyle(PlainButtonStyle())
                                 
-                                // Calendar cleanup buttons
-                                Divider()
-                                
-                                Button(action: {
-                                    Task {
-                                        print("📅 🧹 Manual deduplication initiated by user")
-                                        await dataManager.deduplicateEvents()
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "arrow.2.squarepath")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(.orange)
-                                            .frame(width: 24)
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Clean Up Duplicates")
-                                                .font(.system(size: 15, weight: .medium))
-                                                .foregroundColor(.primary)
-                                            
-                                            Text("Remove duplicate calendar events")
-                                                .font(.system(size: 13))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                Divider()
-                                
-                                Button(action: {
-                                    Task {
-                                        print("📅 🗑️ Manual calendar removal initiated by user")
-                                        await dataManager.removeAllShootEvents()
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(.red)
-                                            .frame(width: 24)
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Remove All Events")
-                                                .font(.system(size: 15, weight: .medium))
-                                                .foregroundColor(.primary)
-                                            
-                                            Text("Delete all ShootSchedule calendar events")
-                                                .font(.system(size: 13))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                         .padding()
@@ -338,6 +271,81 @@ struct AccountDetailsView: View {
                     }
                     .padding(.horizontal)
                     
+                    // Diagnostics Section
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(title: "Diagnostics")
+                        
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                Task {
+                                    print("📅 🧹 Manual deduplication initiated by user")
+                                    await dataManager.deduplicateEvents()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.2.squarepath")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.orange)
+                                        .frame(width: 24)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Clean Up Duplicates")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.primary)
+                                        
+                                        Text("Remove duplicate calendar events")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            Divider()
+                            
+                            Button(action: {
+                                Task {
+                                    print("📅 🗑️ Manual calendar removal initiated by user")
+                                    await dataManager.removeAllShootEvents()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.red)
+                                        .frame(width: 24)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Remove All Events")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.primary)
+                                        
+                                        Text("Delete all ShootSchedule calendar events")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.9))
+                        .cornerRadius(10)
+                    }
+                    .padding(.horizontal)
+                    
                     Spacer(minLength: 100)
                 }
             }
@@ -371,18 +379,21 @@ struct AccountDetailsView: View {
                     }
                 }
                 
-                // Start periodic permission check
-                permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                // Listen for app returning from background to check permissions
+                NotificationCenter.default.addObserver(
+                    forName: UIApplication.willEnterForegroundNotification,
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    // User might have changed permissions in Settings
                     updatePermissionStatuses()
                     dataManager.checkCalendarPermission()
-                    // Update calendar info periodically
                     currentCalendarInfo = dataManager.getCurrentCalendarInfo()
                 }
             }
             .onDisappear {
-                // Stop the timer when view disappears
-                permissionCheckTimer?.invalidate()
-                permissionCheckTimer = nil
+                // Remove notification observers when view disappears
+                NotificationCenter.default.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
             }
             .onChange(of: useFahrenheit) { newValue in
                 saveTemperaturePreference(newValue)
