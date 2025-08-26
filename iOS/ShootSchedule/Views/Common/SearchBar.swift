@@ -10,6 +10,7 @@ import SwiftUI
 struct SearchBar: View {
     @Binding var text: String
     @State private var isEditing = false
+    @FocusState private var isTextFieldFocused: Bool
     
     var body: some View {
         HStack {
@@ -20,13 +21,39 @@ struct SearchBar: View {
                 
                 TextField("Search shoots", text: $text)
                     .padding(7)
+                    .focused($isTextFieldFocused)
                     .onTapGesture {
                         self.isEditing = true
+                        self.isTextFieldFocused = true
+                    }
+                    .onChange(of: isTextFieldFocused) { focused in
+                        self.isEditing = focused
+                    }
+                    .onSubmit {
+                        // Keep keyboard focused for continued searching
+                        // User can dismiss via toolbar Done button if desired
+                    }
+                    .submitLabel(.search)
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") {
+                                self.isTextFieldFocused = false
+                                self.isEditing = false
+                                // Optionally clear search when dismissing keyboard
+                                // self.text = ""
+                            }
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.blue)
+                        }
                     }
                 
                 if !text.isEmpty {
                     Button(action: {
                         self.text = ""
+                        // Dismiss keyboard when clearing search results
+                        self.isTextFieldFocused = false
+                        self.isEditing = false
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
@@ -40,17 +67,17 @@ struct SearchBar: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color(UIColor.systemGray4), lineWidth: 1)
             )
+            .gesture(
+                // Swipe down to dismiss keyboard
+                DragGesture()
+                    .onEnded { value in
+                        if value.translation.height > 50 {
+                            self.isTextFieldFocused = false
+                            self.isEditing = false
+                        }
+                    }
+            )
             
-            if isEditing {
-                Button("Cancel") {
-                    self.isEditing = false
-                    self.text = ""
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-                .padding(.trailing, 10)
-                .transition(.move(edge: .trailing))
-                .animation(.default, value: isEditing)
-            }
         }
     }
 }

@@ -29,6 +29,7 @@ struct ShootsListView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .sheet(item: $selectedShoot) { shoot in
             ShootDetailView(shoot: shoot)
                 .background(Color(red: 1.0, green: 0.992, blue: 0.973))
