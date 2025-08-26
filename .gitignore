@@ -47,6 +47,8 @@ target/
 # Database
 *.db
 *.sqlite
+# Exception: Include baseline shoots.sqlite
+!iOS/ShootSchedule/shoots.sqlite
 
 # Logs
 *.log
