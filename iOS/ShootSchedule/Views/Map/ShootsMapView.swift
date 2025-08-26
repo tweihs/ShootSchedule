@@ -390,7 +390,16 @@ struct ShootsMapView_Previews: PreviewProvider {
                 fullAddress: nil,
                 latitude: 37.7749,
                 longitude: -122.4194,
-                notabilityLevelRaw: nil, isMarked: false
+                notabilityLevelRaw: nil,
+                morningTempF: nil,
+                afternoonTempF: nil,
+                morningTempC: nil,
+                afternoonTempC: nil,
+                durationDays: nil,
+                morningTempBand: nil,
+                afternoonTempBand: nil,
+                estimationMethod: nil,
+                isMarked: false
             ),
             Shoot(
                 id: 2,
@@ -416,7 +425,16 @@ struct ShootsMapView_Previews: PreviewProvider {
                 fullAddress: nil,
                 latitude: 32.7767,
                 longitude: -96.7970,
-                notabilityLevelRaw: nil, isMarked: false
+                notabilityLevelRaw: nil,
+                morningTempF: nil,
+                afternoonTempF: nil,
+                morningTempC: nil,
+                afternoonTempC: nil,
+                durationDays: nil,
+                morningTempBand: nil,
+                afternoonTempBand: nil,
+                estimationMethod: nil,
+                isMarked: false
             )
         ]
     }
