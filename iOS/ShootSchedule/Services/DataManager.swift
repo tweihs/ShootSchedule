@@ -129,10 +129,14 @@ class DataManager: ObservableObject {
         }
         
         let actualMarkedShoots = shoots.filter { $0.isMarked }
+        let futureMarkedShoots = actualMarkedShoots.filter { $0.startDate > Date() }
+        let pastMarkedShoots = actualMarkedShoots.filter { $0.startDate <= Date() }
+        
         print("📊 SHOOTS PROCESSED: Total=\(shoots.count), Marked=\(actualMarkedShoots.count)")
+        print("📊 MARKED SHOOTS: \(actualMarkedShoots.count) total (\(futureMarkedShoots.count) future, \(pastMarkedShoots.count) past)")
         print("📊 MARKED SHOOT IDs IN DATA: \(actualMarkedShoots.map { $0.id }.sorted())")
         print("📊 MARKED SHOOT IDs IN STORAGE: \(Array(markedShootIds).sorted())")
-        print("📊 MARKED COUNT DISPLAYED: \(markedShootsCount)")
+        print("📊 With 'Future' filter on, only \(futureMarkedShoots.count) marked shoots will be visible")
         
         // Ensure UI updates with correct count
         objectWillChange.send()

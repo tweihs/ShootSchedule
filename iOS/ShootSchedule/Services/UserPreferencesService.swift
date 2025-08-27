@@ -23,6 +23,33 @@ struct UserPreferences: Codable {
         let future: Bool               // matches UserDataManager  
         let marked: Bool               // matches UserDataManager
     }
+    
+    // Custom decoding to handle missing fields with defaults
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decode(String.self, forKey: .userId)
+        filterSettings = try container.decode(FilterSettings.self, forKey: .filterSettings)
+        markedShoots = try container.decodeIfPresent([Int].self, forKey: .markedShoots) ?? []
+        temperatureUnit = try container.decodeIfPresent(String.self, forKey: .temperatureUnit) ?? "fahrenheit"
+        calendarSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .calendarSyncEnabled) ?? false
+    }
+    
+    // Standard initializer for creating instances
+    init(userId: String, filterSettings: FilterSettings, markedShoots: [Int], temperatureUnit: String, calendarSyncEnabled: Bool) {
+        self.userId = userId
+        self.filterSettings = filterSettings
+        self.markedShoots = markedShoots
+        self.temperatureUnit = temperatureUnit
+        self.calendarSyncEnabled = calendarSyncEnabled
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case userId
+        case filterSettings
+        case markedShoots
+        case temperatureUnit
+        case calendarSyncEnabled
+    }
 }
 
 struct AppleUserAssociation: Codable {
