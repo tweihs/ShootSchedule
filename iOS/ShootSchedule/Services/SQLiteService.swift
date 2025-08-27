@@ -8,6 +8,33 @@
 import Foundation
 import SQLite3
 
+// Database manifest structure for checking updates
+struct DatabaseManifest: Codable {
+    let lastModified: String
+    let fileHash: String
+    let fileSize: Int
+    let fileSizeMB: Double?
+    let databaseVersion: String?
+    let shootCount: Int?
+    let generatedAt: String?
+    let includesWeather: Bool?
+    let downloadUrl: String?
+    let manifestUrl: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case lastModified = "last_modified"
+        case fileHash = "file_hash"
+        case fileSize = "file_size"
+        case fileSizeMB = "file_size_mb"
+        case databaseVersion = "database_version"
+        case shootCount = "shoot_count"
+        case generatedAt = "generated_at"
+        case includesWeather = "includes_weather"
+        case downloadUrl = "download_url"
+        case manifestUrl = "manifest_url"
+    }
+}
+
 class SQLiteService: ObservableObject {
     private let dbFileName = "shoots.sqlite"
     private var db: OpaquePointer?
@@ -70,25 +97,151 @@ class SQLiteService: ObservableObject {
     }
     
     func downloadLatestDatabase(from urlString: String) async -> Bool {
+        // First check the manifest to see if we need to update
+        let manifestURL = urlString.replacingOccurrences(of: ".sqlite", with: "_manifest.json")
+        
+        if let shouldUpdate = await shouldUpdateDatabase(manifestURL: manifestURL) {
+            if !shouldUpdate {
+                print("📱 Database is up to date, skipping download")
+                return false
+            }
+        }
+        
         guard let url = URL(string: urlString) else {
-            print("Invalid URL: \(urlString)")
+            print("❌ Invalid URL: \(urlString)")
             return false
         }
         
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            try data.write(to: databaseURL)
+            print("📥 Downloading database from: \(urlString)")
+            let (data, response) = try await URLSession.shared.data(from: url)
             
-            // Reopen database with new data
-            closeDatabase()
-            openDatabase()
+            // Check response headers for metadata
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📊 Response status: \(httpResponse.statusCode)")
+                if let lastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified") {
+                    print("📅 Last modified: \(lastModified)")
+                    UserDefaults.standard.set(lastModified, forKey: "DatabaseLastModified")
+                }
+                if let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length") {
+                    print("💾 Size: \(contentLength) bytes")
+                }
+            }
             
-            print("Database updated successfully")
-            return true
+            // Write to temporary file first
+            let tempURL = databaseURL.appendingPathExtension("tmp")
+            try data.write(to: tempURL)
+            
+            // Verify the downloaded database
+            if verifyDatabase(at: tempURL) {
+                // Close current database
+                closeDatabase()
+                
+                // Replace with new database
+                try FileManager.default.removeItem(at: databaseURL)
+                try FileManager.default.moveItem(at: tempURL, to: databaseURL)
+                
+                // Reopen database
+                openDatabase()
+                
+                // Save metadata
+                saveManifestData(from: manifestURL)
+                
+                print("✅ Database updated successfully")
+                return true
+            } else {
+                // Remove invalid temp file
+                try? FileManager.default.removeItem(at: tempURL)
+                print("❌ Downloaded database failed verification")
+                return false
+            }
         } catch {
-            print("Failed to download database: \(error)")
+            print("❌ Failed to download database: \(error)")
             return false
         }
+    }
+    
+    private func shouldUpdateDatabase(manifestURL: String) async -> Bool? {
+        guard let url = URL(string: manifestURL) else {
+            return nil
+        }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let manifest = try JSONDecoder().decode(DatabaseManifest.self, from: data)
+            
+            // Check if we have a stored hash
+            if let storedHash = UserDefaults.standard.string(forKey: "DatabaseFileHash") {
+                if storedHash == manifest.fileHash {
+                    print("📱 Database hash matches, no update needed")
+                    return false
+                }
+            }
+            
+            // Check if we have a stored last modified date
+            if let storedDate = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
+                if storedDate == manifest.lastModified {
+                    print("📱 Database last modified matches, no update needed")
+                    return false
+                }
+            }
+            
+            print("📥 New database available:")
+            print("   Version: \(manifest.databaseVersion ?? "unknown")")
+            print("   Shoots: \(manifest.shootCount ?? 0)")
+            print("   Size: \(manifest.fileSizeMB ?? 0) MB")
+            
+            return true
+        } catch {
+            print("⚠️ Could not check manifest: \(error)")
+            return nil
+        }
+    }
+    
+    private func saveManifestData(from urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let manifest = try JSONDecoder().decode(DatabaseManifest.self, from: data)
+                
+                UserDefaults.standard.set(manifest.fileHash, forKey: "DatabaseFileHash")
+                UserDefaults.standard.set(manifest.lastModified, forKey: "DatabaseLastModified")
+                UserDefaults.standard.set(manifest.databaseVersion, forKey: "DatabaseVersion")
+                UserDefaults.standard.synchronize()
+                
+                print("📝 Saved manifest data")
+            } catch {
+                print("⚠️ Could not save manifest data: \(error)")
+            }
+        }
+    }
+    
+    private func verifyDatabase(at url: URL) -> Bool {
+        var tempDB: OpaquePointer?
+        
+        // Try to open the database
+        if sqlite3_open(url.path, &tempDB) == SQLITE_OK {
+            defer { sqlite3_close(tempDB) }
+            
+            // Try to query the shoots table
+            let querySQL = "SELECT COUNT(*) FROM shoots LIMIT 1"
+            var statement: OpaquePointer?
+            
+            if sqlite3_prepare_v2(tempDB, querySQL, -1, &statement, nil) == SQLITE_OK {
+                defer { sqlite3_finalize(statement) }
+                
+                if sqlite3_step(statement) == SQLITE_ROW {
+                    let count = sqlite3_column_int(statement, 0)
+                    print("✅ Database verification passed: \(count) shoots found")
+                    return count > 0
+                }
+            }
+        }
+        
+        print("❌ Database verification failed")
+        return false
     }
     
     // Load shoots by specific IDs (for marked shoots that may be outside normal date range)

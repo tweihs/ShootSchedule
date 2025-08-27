@@ -55,6 +55,5 @@ COPY /data/Club_Locations.csv data/
 #RUN touch /var/log/cron.log
 
 
-# Run the main Python script and cron on container startup
-#CMD python ./ShootSchedule.py && cron && tail -f /var/log/cron.log
-CMD ["python", "ShootSchedule.py"]
+# Run the complete workflow on container startup
+CMD ["python", "process_and_deploy.py"]

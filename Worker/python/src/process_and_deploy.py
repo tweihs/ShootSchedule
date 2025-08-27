@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""
+Complete workflow for processing shoot schedules and deploying mobile database.
+This script orchestrates the entire process from downloading Excel files to 
+deploying the SQLite database to cloud storage.
+"""
+
+import os
+import sys
+import time
+import json
+from datetime import datetime
+from pathlib import Path
+
+# Import existing modules
+from DownloadShootFilesWithLastModified import download_files
+from MergeShootData import merge
+from GeocodeEventData import main as geocode_data
+from CreatePostgresLoadScript import load_and_insert_data
+from deploy_mobile_db import main as deploy_database
+
+def run_workflow():
+    """Run the complete workflow for processing and deploying shoot data."""
+    
+    print("=" * 60)
+    print("🎯 ShootSchedule Complete Processing Workflow")
+    print("=" * 60)
+    print(f"⏰ Started at: {datetime.now().isoformat()}")
+    print()
+    
+    # Determine output directory
+    if os.path.exists('/.dockerenv') or os.getenv('IN_DOCKER'):
+        output_dir = "/app/data"
+    else:
+        output_dir = "../data"
+    
+    # Ensure output directory exists
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    workflow_steps = []
+    start_time = time.time()
+    
+    try:
+        # Step 1: Download latest Excel files
+        print("📥 Step 1: Downloading latest shoot schedule files...")
+        print("-" * 40)
+        
+        current_year = datetime.now().year
+        next_year = current_year + 1
+        
+        # URLs for NSSA and NSCA Excel files
+        urls = [
+            f"https://prod-nssa-api.azurewebsites.net/v1.0/public/Exports/EventList/{current_year}/NSSA_{current_year}_Shoot_Schedule_For_Web.xls",
+            f"https://prod-nssa-api.azurewebsites.net/v1.0/public/Exports/EventList/{next_year}/NSSA_{next_year}_Shoot_Schedule_For_Web.xls",
+            f"https://nsca.nssa-nsca.org/wp-content/uploads/shoot-schedules/xls/NSCA_{current_year}_Shoot_Schedule_For_Web.xls",
+            f"https://nsca.nssa-nsca.org/wp-content/uploads/shoot-schedules/xls/NSCA_{next_year}_Shoot_Schedule_For_Web.xls"
+        ]
+        
+        # Filter URLs to only current and next year
+        urls = [urls[0], urls[2]]  # Current year NSSA and NSCA
+        
+        downloaded = download_files(urls, output_dir)
+        
+        if any(downloaded):
+            print("✅ New files downloaded")
+            workflow_steps.append({
+                'step': 'download',
+                'status': 'success',
+                'files_updated': sum(downloaded)
+            })
+            
+            # Step 2: Merge Excel files into CSV
+            print("\n📊 Step 2: Merging shoot schedules...")
+            print("-" * 40)
+            
+            merge(output_dir, urls)
+            print("✅ Files merged successfully")
+            workflow_steps.append({
+                'step': 'merge',
+                'status': 'success'
+            })
+            
+            # Step 3: Geocode addresses
+            print("\n🗺️ Step 3: Geocoding shoot locations...")
+            print("-" * 40)
+            
+            geocode_data(output_dir)
+            print("✅ Geocoding complete")
+            workflow_steps.append({
+                'step': 'geocode',
+                'status': 'success'
+            })
+            
+            # Step 4: Load data into PostgreSQL
+            print("\n🐘 Step 4: Loading data into PostgreSQL...")
+            print("-" * 40)
+            
+            load_and_insert_data(output_dir)
+            print("✅ Data loaded into PostgreSQL")
+            workflow_steps.append({
+                'step': 'postgres_load',
+                'status': 'success'
+            })
+            
+            # Step 5: Generate and deploy mobile database
+            print("\n📱 Step 5: Generating and deploying mobile database...")
+            print("-" * 40)
+            
+            # Set environment variable to include weather data
+            os.environ['INCLUDE_WEATHER'] = 'true'
+            
+            # Run deployment
+            deploy_database()
+            print("✅ Mobile database deployed")
+            workflow_steps.append({
+                'step': 'deploy',
+                'status': 'success'
+            })
+            
+            # Read deployment info
+            if os.path.exists('deployment_info.json'):
+                with open('deployment_info.json', 'r') as f:
+                    deployment_info = json.load(f)
+                    workflow_steps.append({
+                        'deployment': deployment_info
+                    })
+            
+        else:
+            print("ℹ️ No new files to process - schedules are up to date")
+            workflow_steps.append({
+                'step': 'download',
+                'status': 'skipped',
+                'reason': 'no_updates'
+            })
+            
+            # Still deploy the database if forced
+            if os.getenv('FORCE_DEPLOY', 'false').lower() == 'true':
+                print("\n🔄 Force deploy requested...")
+                deploy_database()
+                workflow_steps.append({
+                    'step': 'deploy',
+                    'status': 'success',
+                    'forced': True
+                })
+        
+        # Calculate total time
+        total_time = time.time() - start_time
+        
+        # Summary
+        print("\n" + "=" * 60)
+        print("✅ WORKFLOW COMPLETE!")
+        print("=" * 60)
+        print(f"⏱️ Total time: {total_time:.1f} seconds")
+        print(f"📊 Steps completed: {len([s for s in workflow_steps if s.get('status') == 'success'])}")
+        
+        # Save workflow summary
+        summary = {
+            'timestamp': datetime.now().isoformat(),
+            'duration_seconds': total_time,
+            'steps': workflow_steps,
+            'success': True
+        }
+        
+        with open('workflow_summary.json', 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        print(f"📄 Workflow summary saved to workflow_summary.json")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"\n❌ WORKFLOW FAILED: {e}")
+        print(f"   Failed at step: {len(workflow_steps) + 1}")
+        
+        # Save error summary
+        summary = {
+            'timestamp': datetime.now().isoformat(),
+            'duration_seconds': time.time() - start_time,
+            'steps': workflow_steps,
+            'error': str(e),
+            'success': False
+        }
+        
+        with open('workflow_summary.json', 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        return 1
+
+def main():
+    """Main entry point."""
+    
+    # Check for required environment variables
+    required_vars = ['DATABASE_URL']
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    
+    if missing_vars:
+        print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+        sys.exit(1)
+    
+    # Optional: Set up scheduled runs
+    if os.getenv('RUN_SCHEDULE', 'once') == 'continuous':
+        # Run every 6 hours
+        import schedule
+        
+        print("🔄 Running in continuous mode (every 6 hours)")
+        schedule.every(6).hours.do(run_workflow)
+        
+        # Run immediately
+        run_workflow()
+        
+        # Keep running
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+    else:
+        # Run once
+        sys.exit(run_workflow())
+
+if __name__ == "__main__":
+    main()
