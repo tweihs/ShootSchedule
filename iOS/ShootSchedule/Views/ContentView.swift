@@ -95,6 +95,8 @@ struct ContentView: View {
             .onAppear {
                 // Set filter options reference for auto-disable functionality
                 dataManager.filterOptions = filterOptions
+                // Set up observers for filter changes to sync to backend
+                dataManager.setupFilterOptionsObservers(filterOptions)
                 // Initial filter application
                 applyFilters()
             }

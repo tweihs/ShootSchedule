@@ -49,27 +49,22 @@ async function testPreferenceFunctions() {
     const syncPrefsData = {
       userId: EXISTING_USER_ID,
       filterSettings: {
+        search: "test search",
+        shootTypes: ["NSCA", "NSSA"],
+        months: [1, 2, 3],
         states: ["CA", "TX"],
-        disciplines: ["Trap", "Skeet"],
-        maxDistance: 100,
+        notable: false,
+        future: true,
+        marked: false,
       },
+      markedShoots: [1, 2, 3],
     };
     const syncResult = await makeRequest("syncUserPreferences", "POST", syncPrefsData);
     console.log(`Status: ${syncResult.status}`);
     console.log(`Response:`, syncResult.data);
 
-    // Test 2: Sync marked shoots
-    console.log("\nTest 2: Syncing marked shoots...");
-    const syncShootsData = {
-      userId: EXISTING_USER_ID,
-      markedShootIds: [1, 2, 3],
-    };
-    const syncShootsResult = await makeRequest("syncMarkedShoots", "POST", syncShootsData);
-    console.log(`Status: ${syncShootsResult.status}`);
-    console.log(`Response:`, syncShootsResult.data);
-
-    // Test 3: Fetch preferences
-    console.log("\nTest 3: Fetching user preferences...");
+    // Test 2: Fetch preferences
+    console.log("\nTest 2: Fetching user preferences...");
     const prefsResult = await makeRequest(`fetchUserPreferences?userId=${EXISTING_USER_ID}`, "GET");
     console.log(`Status: ${prefsResult.status}`);
     console.log(`Response:`, JSON.stringify(prefsResult.data, null, 2));

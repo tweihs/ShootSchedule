@@ -20,9 +20,17 @@ class DataManager: ObservableObject {
     // Reference to filter optionssho for auto-disabling marked filter
     weak var filterOptions: FilterOptions?
     
-    private var markedShootIds: Set<Int> = []
+    // Reference to authentication manager for sync operations
+    weak var authManager: AuthenticationManager?
+    
+    var markedShootIds: Set<Int> = [] // Made public for UserPreferencesService access
     private let markedShootsKey = "markedShoots"
     private let sqliteService = SQLiteService()
+    
+    // Serial queue for preference syncing to prevent race conditions
+    private let preferenceSyncQueue = DispatchQueue(label: "com.shootschedule.preference-sync", qos: .background)
+    private var syncWorkItem: DispatchWorkItem?
+    private var filterObservers: [AnyCancellable] = []
     
     // Calendar integration
     private let eventStore = EKEventStore()
@@ -35,10 +43,18 @@ class DataManager: ObservableObject {
     init() {
         loadMarkedShoots()
         loadShootsFromDatabase()
+        // Defer calendar operations until after authentication
+        // checkCalendarPermission() - will be called when authenticated
+        // loadCalendarSyncPreference() - will be called when authenticated
+        setupUserPreferenceSync()
+    }
+    
+    func setupAuthenticatedFeatures() {
+        // Call this after user authenticates
         checkCalendarPermission()
         loadCalendarSyncPreference()
         
-        // Debug available calendars at startup if we have permission
+        // Debug available calendars if we have permission
         if hasCalendarPermission {
             debugAvailableCalendars()
         }
@@ -57,6 +73,8 @@ class DataManager: ObservableObject {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        NotificationCenter.default.removeObserver(self, name: Notification.Name("userPreferencesLoaded"), object: nil)
+        NotificationCenter.default.removeObserver(self, name: Notification.Name("newUserNeedsPreferenceSync"), object: nil)
     }
     
     func loadCachedData() {
@@ -131,6 +149,11 @@ class DataManager: ObservableObject {
         
         // Trigger UI update for marked count
         objectWillChange.send()
+        
+        // Only sync preferences if user is authenticated
+        if authManager?.isAuthenticated == true {
+            syncPreferencesIfAuthenticated()
+        }
     }
     
     func unmarkShoot(_ shoot: Shoot) {
@@ -161,6 +184,11 @@ class DataManager: ObservableObject {
         
         // Trigger UI update for marked count
         objectWillChange.send()
+        
+        // Only sync preferences if user is authenticated
+        if authManager?.isAuthenticated == true {
+            syncPreferencesIfAuthenticated()
+        }
     }
     
     func isShootMarked(_ shoot: Shoot) -> Bool {
@@ -613,6 +641,9 @@ class DataManager: ObservableObject {
         isCalendarSyncEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: "calendarSyncEnabled")
         UserDefaults.standard.synchronize()
+        
+        // Sync preference change to backend
+        syncPreferencesIfAuthenticated()
         
         if enabled && hasCalendarPermission {
             print("📅 📝 Calendar sync ENABLED - will set up calendar")
@@ -1104,9 +1135,11 @@ class DataManager: ObservableObject {
         print("📅 🧹 STARTING EVENT DEDUPLICATION:")
         print("📅 Target calendar: '\(calendar.title)'")
         
-        // Get all events in the calendar for a wide date range
-        let startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
-        let endDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+        // Get all events in the calendar for a very wide date range for comprehensive deduplication
+        let startDate = Calendar.current.date(byAdding: .year, value: -3, to: Date()) ?? Date()
+        let endDate = Calendar.current.date(byAdding: .year, value: 3, to: Date()) ?? Date()
+        
+        print("📅 🧹 DEDUPLICATION DATE RANGE: \(DateFormatter.localizedString(from: startDate, dateStyle: .short, timeStyle: .none)) to \(DateFormatter.localizedString(from: endDate, dateStyle: .short, timeStyle: .none))")
         
         let predicate = eventStore.predicateForEvents(
             withStart: startDate,
@@ -1678,6 +1711,153 @@ class DataManager: ObservableObject {
             print("📅 ℹ️ No shoot events found in calendar '\(calendar.title)'")
         }
     }
+    
+    // MARK: - User Preference Synchronization
+    
+    private let userPreferencesService = UserPreferencesService()
+    
+    private func setupUserPreferenceSync() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleUserPreferencesLoaded(_:)),
+            name: .userPreferencesLoaded,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNewUserNeedsPreferenceSync(_:)),
+            name: .newUserNeedsPreferenceSync,
+            object: nil
+        )
+    }
+    
+    @objc private func handleUserPreferencesLoaded(_ notification: Notification) {
+        guard let preferences = notification.object as? UserPreferences else { 
+            print("⚠️ Received userPreferencesLoaded notification but couldn't cast to UserPreferences")
+            return 
+        }
+        
+        DispatchQueue.main.async {
+            print("📥 Applying user preferences from server")
+            self.userPreferencesService.applyUserPreferences(preferences, to: self)
+        }
+    }
+    
+    @objc private func handleNewUserNeedsPreferenceSync(_ notification: Notification) {
+        guard let user = notification.object as? User else { return }
+        
+        Task {
+            await syncCurrentPreferencesToServer(for: user)
+        }
+    }
+    
+    func syncCurrentPreferencesToServer(for user: User) async {
+        let preferences = userPreferencesService.createUserPreferences(from: user, dataManager: self)
+        
+        do {
+            // Sync both preferences and marked shoots in a single call
+            try await userPreferencesService.syncUserPreferences(user: user, preferences: preferences)
+            print("📤 Successfully synced current preferences and marked shoots to server")
+            
+        } catch {
+            print("❌ Failed to sync preferences to server: \(error)")
+        }
+    }
+    
+    // Call this whenever user preferences change locally
+    func syncPreferencesIfAuthenticated() {
+        guard let authManager = authManager, 
+              authManager.isAuthenticated,
+              let currentUser = authManager.currentUser else {
+            print("📤 Local preferences changed - sync deferred (user not authenticated)")
+            return
+        }
+        
+        // Cancel any pending sync work
+        syncWorkItem?.cancel()
+        
+        // Create new sync work item with a small delay to debounce rapid changes
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            
+            Task {
+                do {
+                    let userPreferencesService = UserPreferencesService()
+                    let preferences = userPreferencesService.createUserPreferences(from: currentUser, dataManager: self)
+                    try await userPreferencesService.syncUserPreferences(user: currentUser, preferences: preferences)
+                    print("✅ Successfully synced preferences to server")
+                } catch {
+                    print("❌ Failed to sync local preferences: \(error)")
+                }
+            }
+        }
+        
+        syncWorkItem = workItem
+        
+        // Execute on serial queue with 1 second debounce delay
+        preferenceSyncQueue.asyncAfter(deadline: .now() + 1.0, execute: workItem)
+    }
+    
+    // Set up observers for FilterOptions changes
+    func setupFilterOptionsObservers(_ filterOptions: FilterOptions) {
+        self.filterOptions = filterOptions
+        
+        // Clear any existing observers
+        filterObservers.forEach { $0.cancel() }
+        filterObservers.removeAll()
+        
+        // Create publishers for all filter properties
+        let searchPublisher = filterOptions.$searchText
+            .dropFirst() // Skip initial value
+            .debounce(for: .seconds(0.5), scheduler: RunLoop.main)
+            .removeDuplicates()
+        
+        let affiliationsPublisher = filterOptions.$selectedAffiliations
+            .dropFirst()
+            .removeDuplicates()
+        
+        let monthsPublisher = filterOptions.$selectedMonths
+            .dropFirst()
+            .removeDuplicates()
+        
+        let statesPublisher = filterOptions.$selectedStates
+            .dropFirst()
+            .removeDuplicates()
+        
+        let futureOnlyPublisher = filterOptions.$showFutureOnly
+            .dropFirst()
+            .removeDuplicates()
+        
+        let notableOnlyPublisher = filterOptions.$showNotableOnly
+            .dropFirst()
+            .removeDuplicates()
+        
+        // Note: showMarkedOnly is not synced - it's just a view filter
+        
+        // Combine all publishers and trigger sync when any changes
+        let combinedPublisher = Publishers.CombineLatest(
+            searchPublisher,
+            Publishers.CombineLatest(affiliationsPublisher, monthsPublisher)
+        )
+        .combineLatest(
+            Publishers.CombineLatest(statesPublisher, futureOnlyPublisher),
+            notableOnlyPublisher
+        )
+        .map { _ in () }
+        
+        // Subscribe to combined changes
+        let observer = combinedPublisher
+            .sink { [weak self] _ in
+                print("📝 Filter preferences changed, triggering sync...")
+                self?.syncPreferencesIfAuthenticated()
+            }
+        
+        filterObservers.append(observer)
+        
+        print("✅ Set up observers for FilterOptions changes")
+    }
+    
     
     // MARK: - Timezone Handling
     

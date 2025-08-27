@@ -34,7 +34,10 @@ final class FilterOptionsTests: XCTestCase {
                   state: "CA", zip: nil, country: "USA", zone: nil, clubEmail: nil,
                   pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
                   eventType: "NSCA", region: nil, fullAddress: nil,
-                  latitude: 34.0522, longitude: -118.2437, isMarked: false),
+                  latitude: 34.0522, longitude: -118.2437, notabilityLevelRaw: nil,
+                  morningTempF: nil, afternoonTempF: nil, morningTempC: nil, afternoonTempC: nil,
+                  durationDays: nil, morningTempBand: nil, afternoonTempBand: nil, estimationMethod: nil,
+                  isMarked: false),
             
             // Past NSSA shoot in TX
             Shoot(id: 2, shootName: "Past Texas Shoot", shootType: nil,
@@ -43,7 +46,10 @@ final class FilterOptionsTests: XCTestCase {
                   state: "TX", zip: nil, country: "USA", zone: nil, clubEmail: nil,
                   pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
                   eventType: "NSSA", region: nil, fullAddress: nil,
-                  latitude: 32.7767, longitude: -96.7970, notabilityLevelRaw: nil, isMarked: true),
+                  latitude: 32.7767, longitude: -96.7970, notabilityLevelRaw: nil,
+                  morningTempF: nil, afternoonTempF: nil, morningTempC: nil, afternoonTempC: nil,
+                  durationDays: nil, morningTempBand: nil, afternoonTempBand: nil, estimationMethod: nil,
+                  isMarked: true),
             
             // Future ATA shoot in FL
             Shoot(id: 3, shootName: "Florida Championship", shootType: "State Championship",
@@ -52,7 +58,10 @@ final class FilterOptionsTests: XCTestCase {
                   state: "FL", zip: nil, country: "USA", zone: nil, clubEmail: nil,
                   pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
                   eventType: "ATA", region: nil, fullAddress: nil,
-                  latitude: 25.7617, longitude: -80.1918, notabilityLevelRaw: nil, isMarked: false),
+                  latitude: 25.7617, longitude: -80.1918, notabilityLevelRaw: nil,
+                  morningTempF: nil, afternoonTempF: nil, morningTempC: nil, afternoonTempC: nil,
+                  durationDays: nil, morningTempBand: nil, afternoonTempBand: nil, estimationMethod: nil,
+                  isMarked: false),
             
             // Future NSCA shoot in NY (no coordinates)
             Shoot(id: 4, shootName: "New York Open", shootType: nil,
@@ -61,7 +70,10 @@ final class FilterOptionsTests: XCTestCase {
                   state: "NY", zip: nil, country: "USA", zone: nil, clubEmail: nil,
                   pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
                   eventType: "NSCA", region: nil, fullAddress: nil,
-                  latitude: nil, longitude: nil, isMarked: true)
+                  latitude: nil, longitude: nil, notabilityLevelRaw: nil,
+                  morningTempF: nil, afternoonTempF: nil, morningTempC: nil, afternoonTempC: nil,
+                  durationDays: nil, morningTempBand: nil, afternoonTempBand: nil, estimationMethod: nil,
+                  isMarked: true)
         ]
     }
     
