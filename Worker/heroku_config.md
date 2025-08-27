@@ -19,9 +19,11 @@ heroku config:set S3_REGION="us-east-1"
 heroku config:set S3_KEY="databases/shoots.sqlite"
 heroku config:set CDN_URL="https://shootschedule-mobile.s3.amazonaws.com"
 
-# For Firebase (if using Firebase Storage)
-heroku config:set GOOGLE_APPLICATION_CREDENTIALS="path/to/credentials.json"
-heroku config:set FIREBASE_STORAGE_BUCKET="your-project.appspot.com"
+# For Firebase Storage (RECOMMENDED)
+heroku config:set STORAGE_TYPE="FIREBASE"
+heroku config:set FIREBASE_STORAGE_BUCKET="shootsdb-11bb7.firebasestorage.app"
+# You'll need to add service account credentials as a buildpack env var
+# Or use Google Cloud buildpack for Application Default Credentials
 
 # For Google Cloud Storage (if using GCS)
 heroku config:set GOOGLE_APPLICATION_CREDENTIALS="path/to/credentials.json"
@@ -73,6 +75,24 @@ heroku config:set RUN_SCHEDULE="continuous"
 heroku ps:scale worker=1
 ```
 
+## Setting up Firebase Service Account on Heroku
+
+To authenticate with Firebase Storage from Heroku:
+
+1. **Get Service Account Key from Firebase Console:**
+   - Go to Firebase Console → Project Settings → Service Accounts
+   - Click "Generate New Private Key"
+   - Save the JSON file
+
+2. **Add to Heroku as Config Var:**
+   ```bash
+   # Convert the JSON to a single line and set as config var
+   heroku config:set GOOGLE_CREDENTIALS="$(cat path/to/serviceAccountKey.json | jq -c .)"
+   ```
+
+3. **Update deploy_mobile_db.py to use the credentials:**
+   The script will automatically use these credentials when available.
+
 ## Database URLs
 
 The deployed SQLite database will be available at:
@@ -81,9 +101,9 @@ The deployed SQLite database will be available at:
 - Database: `https://shootschedule-mobile.s3.amazonaws.com/databases/shoots.sqlite`
 - Manifest: `https://shootschedule-mobile.s3.amazonaws.com/databases/shoots_manifest.json`
 
-### Firebase Storage:
-- Database: `https://storage.googleapis.com/{bucket}/databases/shoots.sqlite`
-- Manifest: `https://storage.googleapis.com/{bucket}/databases/shoots_manifest.json`
+### Firebase Storage (Current Production):
+- Database: `https://firebasestorage.googleapis.com/v0/b/shootsdb-11bb7.firebasestorage.app/o/shoots.sqlite?alt=media`
+- Direct GCS URL: `https://storage.googleapis.com/shootsdb-11bb7.firebasestorage.app/shoots.sqlite`
 
 ### Google Cloud Storage:
 - Database: `https://storage.googleapis.com/{bucket}/databases/shoots.sqlite`

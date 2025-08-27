@@ -38,10 +38,9 @@ class DataManager: ObservableObject {
     private var shootScheduleCalendar: EKCalendar?
     
     // URL where SQLite database can be downloaded from
-    // Production database URL - update this when deploying to cloud storage
-    // For S3: https://shootschedule-mobile.s3.amazonaws.com/databases/shoots.sqlite
-    // For Firebase: https://storage.googleapis.com/{bucket}/databases/shoots.sqlite
-    private let databaseURL = "https://shootschedule-mobile.s3.amazonaws.com/databases/shoots.sqlite"
+    // Production database URL - Firebase Storage
+    // Firebase Storage URL format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encoded-path}?alt=media
+    private let databaseURL = "https://firebasestorage.googleapis.com/v0/b/shootsdb-11bb7.firebasestorage.app/o/shoots.sqlite?alt=media"
     
     init() {
         loadMarkedShoots()

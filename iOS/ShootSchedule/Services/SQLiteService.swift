@@ -97,10 +97,8 @@ class SQLiteService: ObservableObject {
     }
     
     func downloadLatestDatabase(from urlString: String) async -> Bool {
-        // First check the manifest to see if we need to update
-        let manifestURL = urlString.replacingOccurrences(of: ".sqlite", with: "_manifest.json")
-        
-        if let shouldUpdate = await shouldUpdateDatabase(manifestURL: manifestURL) {
+        // Check if we need to update using HTTP headers
+        if let shouldUpdate = await shouldUpdateDatabaseUsingHeaders(urlString: urlString) {
             if !shouldUpdate {
                 print("📱 Database is up to date, skipping download")
                 return false
@@ -114,17 +112,38 @@ class SQLiteService: ObservableObject {
         
         do {
             print("📥 Downloading database from: \(urlString)")
-            let (data, response) = try await URLSession.shared.data(from: url)
             
-            // Check response headers for metadata
+            // Create request with If-Modified-Since header if we have a stored date
+            var request = URLRequest(url: url)
+            if let lastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
+                request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
+                print("📅 Checking if modified since: \(lastModified)")
+            }
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            // Check response headers
             if let httpResponse = response as? HTTPURLResponse {
                 print("📊 Response status: \(httpResponse.statusCode)")
+                
+                // If not modified, we're done
+                if httpResponse.statusCode == 304 {
+                    print("✅ Database not modified (304), keeping current version")
+                    return false
+                }
+                
+                // Save new last modified date and etag
                 if let lastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified") {
-                    print("📅 Last modified: \(lastModified)")
+                    print("📅 New last modified: \(lastModified)")
                     UserDefaults.standard.set(lastModified, forKey: "DatabaseLastModified")
                 }
+                if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                    print("🏷️ ETag: \(etag)")
+                    UserDefaults.standard.set(etag, forKey: "DatabaseETag")
+                }
                 if let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length") {
-                    print("💾 Size: \(contentLength) bytes")
+                    let sizeInMB = (Double(contentLength) ?? 0) / 1_048_576
+                    print("💾 Size: \(String(format: "%.1f", sizeInMB)) MB (\(contentLength) bytes)")
                 }
             }
             
@@ -144,9 +163,6 @@ class SQLiteService: ObservableObject {
                 // Reopen database
                 openDatabase()
                 
-                // Save metadata
-                saveManifestData(from: manifestURL)
-                
                 print("✅ Database updated successfully")
                 return true
             } else {
@@ -161,60 +177,71 @@ class SQLiteService: ObservableObject {
         }
     }
     
-    private func shouldUpdateDatabase(manifestURL: String) async -> Bool? {
-        guard let url = URL(string: manifestURL) else {
+    private func shouldUpdateDatabaseUsingHeaders(urlString: String) async -> Bool? {
+        guard let url = URL(string: urlString) else {
+            print("⚠️ Invalid URL")
             return nil
         }
         
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let manifest = try JSONDecoder().decode(DatabaseManifest.self, from: data)
+            // Use HEAD request to check headers without downloading the file
+            var request = URLRequest(url: url)
+            request.httpMethod = "HEAD"
             
-            // Check if we have a stored hash
-            if let storedHash = UserDefaults.standard.string(forKey: "DatabaseFileHash") {
-                if storedHash == manifest.fileHash {
-                    print("📱 Database hash matches, no update needed")
-                    return false
-                }
+            // Add If-Modified-Since header if we have a stored date
+            if let lastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
+                request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
             }
             
-            // Check if we have a stored last modified date
-            if let storedDate = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
-                if storedDate == manifest.lastModified {
-                    print("📱 Database last modified matches, no update needed")
-                    return false
-                }
+            // Add If-None-Match header if we have an ETag
+            if let etag = UserDefaults.standard.string(forKey: "DatabaseETag") {
+                request.setValue(etag, forHTTPHeaderField: "If-None-Match")
             }
             
-            print("📥 New database available:")
-            print("   Version: \(manifest.databaseVersion ?? "unknown")")
-            print("   Shoots: \(manifest.shootCount ?? 0)")
-            print("   Size: \(manifest.fileSizeMB ?? 0) MB")
+            let (_, response) = try await URLSession.shared.data(for: request)
             
-            return true
+            if let httpResponse = response as? HTTPURLResponse {
+                print("🔍 HEAD request status: \(httpResponse.statusCode)")
+                
+                // 304 Not Modified means we're up to date
+                if httpResponse.statusCode == 304 {
+                    print("✅ Database not modified (304)")
+                    return false
+                }
+                
+                // Check Last-Modified header
+                if let serverLastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified"),
+                   let storedLastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
+                    if serverLastModified == storedLastModified {
+                        print("📅 Last-Modified matches, no update needed")
+                        return false
+                    }
+                    print("📅 New version available (Last-Modified changed)")
+                }
+                
+                // Check ETag
+                if let serverETag = httpResponse.value(forHTTPHeaderField: "ETag"),
+                   let storedETag = UserDefaults.standard.string(forKey: "DatabaseETag") {
+                    if serverETag == storedETag {
+                        print("🏷️ ETag matches, no update needed")
+                        return false
+                    }
+                    print("🏷️ New version available (ETag changed)")
+                }
+                
+                // Show file size if available
+                if let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length") {
+                    let sizeInMB = (Double(contentLength) ?? 0) / 1_048_576
+                    print("💾 Database size: \(String(format: "%.1f", sizeInMB)) MB")
+                }
+                
+                return true // Should update
+            }
+            
+            return nil // Couldn't determine
         } catch {
-            print("⚠️ Could not check manifest: \(error)")
-            return nil
-        }
-    }
-    
-    private func saveManifestData(from urlString: String) {
-        guard let url = URL(string: urlString) else { return }
-        
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                let manifest = try JSONDecoder().decode(DatabaseManifest.self, from: data)
-                
-                UserDefaults.standard.set(manifest.fileHash, forKey: "DatabaseFileHash")
-                UserDefaults.standard.set(manifest.lastModified, forKey: "DatabaseLastModified")
-                UserDefaults.standard.set(manifest.databaseVersion, forKey: "DatabaseVersion")
-                UserDefaults.standard.synchronize()
-                
-                print("📝 Saved manifest data")
-            } catch {
-                print("⚠️ Could not save manifest data: \(error)")
-            }
+            print("⚠️ Could not check database headers: \(error)")
+            return nil // On error, let the download proceed
         }
     }
     
