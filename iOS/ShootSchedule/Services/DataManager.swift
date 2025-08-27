@@ -25,7 +25,7 @@ class DataManager: ObservableObject {
     
     var markedShootIds: Set<Int> = [] // Made public for UserPreferencesService access
     private let markedShootsKey = "markedShoots"
-    private let sqliteService = SQLiteService()
+    let sqliteService = SQLiteService()
     
     // Serial queue for preference syncing to prevent race conditions
     private let preferenceSyncQueue = DispatchQueue(label: "com.shootschedule.preference-sync", qos: .background)

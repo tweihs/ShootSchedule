@@ -83,6 +83,7 @@ struct ContentView: View {
                         ShootsListView(shoots: filteredShoots)
                     case .map:
                         ShootsMapViewContainer(shoots: filteredShoots, selectedShoot: $selectedShoot)
+                            .ignoresSafeArea(edges: .bottom)
                     }
                 }
             }
@@ -138,14 +139,47 @@ struct ContentView: View {
     }
     
     private func applyFilters() {
-        let currentShoots = dataManager.shoots
         let currentFilterOptions = filterOptions
         
         filterQueue.async {
-            let filtered = currentFilterOptions.apply(to: currentShoots)
-            DispatchQueue.main.async {
-                self.filteredShoots = filtered
-                self.isFiltering = false
+            var shootsToFilter: [Shoot] = []
+            
+            // Special case: When Marked filter is on, load ALL marked shoots from database
+            // This overrides the year filter and shows all marked shoots regardless of date
+            if currentFilterOptions.showMarkedOnly {
+                // Get all marked shoot IDs
+                let markedIds = self.dataManager.markedShootIds
+                
+                if !markedIds.isEmpty {
+                    // Load marked shoots from database (bypasses year filter)
+                    let markedShoots = self.dataManager.sqliteService.loadShootsByIds(markedIds)
+                    
+                    // Apply marked status to these shoots
+                    shootsToFilter = markedShoots.map { shoot in
+                        var updatedShoot = shoot
+                        updatedShoot.isMarked = true
+                        return updatedShoot
+                    }
+                    
+                    print("📍 Loaded \(shootsToFilter.count) marked shoots from database (bypassing year filter)")
+                } else {
+                    shootsToFilter = []
+                }
+                
+                // When marked filter is on, we only show marked shoots - no other filtering needed
+                DispatchQueue.main.async {
+                    self.filteredShoots = shootsToFilter
+                    self.isFiltering = false
+                }
+            } else {
+                // Normal filtering - use the shoots already loaded with year filter
+                shootsToFilter = self.dataManager.shoots
+                let filtered = currentFilterOptions.apply(to: shootsToFilter)
+                
+                DispatchQueue.main.async {
+                    self.filteredShoots = filtered
+                    self.isFiltering = false
+                }
             }
         }
         
