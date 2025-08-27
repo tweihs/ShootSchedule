@@ -94,17 +94,35 @@ class DataManager: ObservableObject {
         }
     }
     
+    /// Force check for database updates (useful for testing and manual refresh)
+    func checkForDatabaseUpdates() async {
+        print("\n🔍 Manual database update check requested")
+        await fetchShoots()
+    }
+    
     func fetchShoots() async {
         isLoading = true
+        
+        print("\n🔄 Starting database update check...")
+        print("📍 Database URL: \(databaseURL)")
         
         // Try to download latest database
         let success = await sqliteService.downloadLatestDatabase(from: databaseURL)
         
         if success {
+            print("✅ Database was updated, reloading shoots...")
             loadShootsFromDatabase()
+            
+            // Re-apply marked status after loading new data
+            applyMarkedStatus()
+            
+            print("📊 Loaded \(shoots.count) shoots from updated database")
         } else {
-            // Fall back to cached data if download fails
-            loadShootsFromDatabase()
+            print("ℹ️ Database is current or update skipped")
+            // Still ensure we have data loaded
+            if shoots.isEmpty {
+                loadShootsFromDatabase()
+            }
         }
         
         isLoading = false

@@ -365,6 +365,47 @@ struct AccountDetailsView: View {
                         SectionHeader(title: "Diagnostics")
                         
                         VStack(spacing: 12) {
+                            // Check for database updates
+                            Button(action: {
+                                Task {
+                                    print("🔄 Manual database update check initiated by user")
+                                    await dataManager.checkForDatabaseUpdates()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.clockwise.icloud")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.blue)
+                                        .frame(width: 24)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Check for Database Updates")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.primary)
+                                        
+                                        Text("Download latest shoot database from server")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if dataManager.isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle())
+                                            .scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .disabled(dataManager.isLoading)
+                            
+                            Divider()
+                            
                             Button(action: {
                                 Task {
                                     print("📅 🧹 Manual deduplication initiated by user")

@@ -23,6 +23,8 @@ import json
 import hashlib
 import argparse
 from datetime import datetime, timezone
+import firebase_admin
+from firebase_admin import credentials
 from pathlib import Path
 
 def calculate_file_hash(file_path):
