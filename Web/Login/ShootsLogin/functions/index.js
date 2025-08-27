@@ -163,12 +163,31 @@ exports.associateAppleUser = onRequest(
 
           console.log(`Existing Apple user found: ${appleUserID} -> ${userId}`);
 
-          // Update identity token if provided
-          if (identityToken) {
-            await client.query(
-                `UPDATE apple_users SET identity_token = $1 WHERE apple_user_id = $2`,
-                [identityToken, appleUserID],
-            );
+          // Update identity token and email if provided (email might not have been available on first sign in)
+          if (identityToken || email) {
+            const updateFields = [];
+            const updateValues = [];
+            let paramCount = 1;
+
+            if (identityToken) {
+              updateFields.push(`identity_token = $${paramCount++}`);
+              updateValues.push(identityToken);
+            }
+
+            if (email && !userData.email) {
+              // Only update email if we didn't have one before
+              updateFields.push(`email = $${paramCount++}`);
+              updateValues.push(email);
+              console.log(`Updating missing email for Apple user: ${email}`);
+            }
+
+            if (updateFields.length > 0) {
+              updateValues.push(appleUserID);
+              await client.query(
+                  `UPDATE apple_users SET ${updateFields.join(", ")} WHERE apple_user_id = $${paramCount}`,
+                  updateValues,
+              );
+            }
           }
 
           // Prepare response with user data and preferences
@@ -199,15 +218,72 @@ exports.associateAppleUser = onRequest(
           return res.json(response);
         }
 
-        // New user - create user record first
-        const newUser = await client.query(
-            `INSERT INTO users (id, created_at) 
-             VALUES (gen_random_uuid(), NOW()) 
-             RETURNING id, created_at`,
-        );
-        const userId = newUser.rows[0].id;
-        const createdAt = newUser.rows[0].created_at;
-        console.log(`Created new user: ${userId}`);
+        // Check if this email already exists in firebase_users (account linking)
+        let userId;
+        let createdAt;
+        let existingPreferences = null;
+        let linkedAccount = false;
+
+        if (email && !email.includes("@privaterelay.appleid.com")) {
+          // Only try to link if we have a real email (not Apple's private relay)
+          console.log(`Checking if email ${email} exists in firebase_users for account linking`);
+
+          const firebaseUserQuery = `
+            SELECT 
+              fu.user_id,
+              fu.user_json->>'displayName' as firebase_display_name,
+              fu.user_json->>'email' as firebase_email,
+              u.created_at,
+              up.preferences,
+              up.marked_shoots
+            FROM firebase_users fu
+            INNER JOIN users u ON fu.user_id = u.id
+            LEFT OUTER JOIN user_preferences up ON u.id = up.user_id
+            WHERE fu.user_json->>'email' = $1
+          `;
+
+          const firebaseUserResult = await client.query(firebaseUserQuery, [email]);
+          console.log(`Firebase user query returned ${firebaseUserResult.rowCount} rows for email: ${email}`);
+
+          if (firebaseUserResult.rowCount > 0) {
+            // Found existing user with same email in firebase_users - link accounts!
+            const existingData = firebaseUserResult.rows[0];
+            userId = existingData.user_id;
+            createdAt = existingData.created_at;
+            linkedAccount = true;
+            console.log(`Found existing Firebase user with email ${email}, user_id: ${userId}`);
+
+            // Prepare existing preferences if they exist
+            if (existingData.preferences !== null || existingData.marked_shoots !== null) {
+              existingPreferences = {
+                filterSettings: existingData.preferences || {
+                  future: true,
+                  marked: false,
+                  months: [],
+                  search: "",
+                  states: [],
+                  notable: false,
+                  shootTypes: [],
+                },
+                markedShoots: existingData.marked_shoots || [],
+              };
+            }
+
+            console.log(`🔗 Linking Apple account to existing user ${userId} (previously signed in with Google)`);
+          }
+        }
+
+        // If no existing user found, create new one
+        if (!userId) {
+          const newUser = await client.query(
+              `INSERT INTO users (id, created_at) 
+               VALUES (gen_random_uuid(), NOW()) 
+               RETURNING id, created_at`,
+          );
+          userId = newUser.rows[0].id;
+          createdAt = newUser.rows[0].created_at;
+          console.log(`Created new user: ${userId}`);
+        }
 
         // Create Apple user association
         await client.query(
@@ -218,18 +294,206 @@ exports.associateAppleUser = onRequest(
 
         console.log(`Associated Apple user ${appleUserID} with user ${userId}`);
 
-        // Return new user data (no preferences yet)
-        return res.json({
+        // Return user data with preferences if it's a linked account
+        const response = {
           userId,
-          isNewUser: true,
+          isNewUser: !linkedAccount,
           email,
           displayName,
           createdAt,
-          preferences: null, // New users have no preferences yet
-        });
+          preferences: existingPreferences,
+        };
+
+        if (linkedAccount) {
+          response.linkedAccount = true;
+          response.message = "Account successfully linked with existing Google account";
+        }
+
+        return res.json(response);
       } catch (error) {
         console.error("Error associating Apple user:", error);
         return res.status(500).json({error: "Failed to associate Apple user"});
+      } finally {
+        await client.end();
+      }
+    },
+);
+
+// associateFirebaseUser: Link Firebase/Google Sign In user to existing or new user
+exports.associateFirebaseUser = onRequest(
+    {region: "us-central1", runtime: "nodejs22", secrets: ["DB_URL"]},
+    async (req, res) => {
+      const {uid, email, displayName} = req.body;
+
+      if (!uid || !email) {
+        return res.status(400).json({error: "Missing uid or email"});
+      }
+
+      const dbUrl = process.env.DB_URL;
+      if (!dbUrl) {
+        console.error("Missing DB_URL env var");
+        return res.status(500).json({error: "Database configuration error"});
+      }
+
+      const client = new Client({
+        connectionString: dbUrl,
+        ssl: {rejectUnauthorized: false},
+      });
+
+      try {
+        await client.connect();
+
+        // Check if Firebase user already exists
+        const existingUserQuery = `
+          SELECT 
+            fu.user_id,
+            fu.user_json,
+            fu.firebase_uid,
+            u.created_at,
+            up.preferences,
+            up.marked_shoots
+          FROM firebase_users fu
+          INNER JOIN users u ON fu.user_id = u.id
+          LEFT OUTER JOIN user_preferences up ON u.id = up.user_id
+          WHERE fu.firebase_uid = $1
+        `;
+
+        const existingUserResult = await client.query(existingUserQuery, [uid]);
+
+        if (existingUserResult.rowCount > 0) {
+          // Firebase user already exists, return all user data
+          const userData = existingUserResult.rows[0];
+          const userId = userData.user_id;
+
+          console.log(`Existing Firebase user found: ${uid} -> ${userId}`);
+
+          // Extract user info from JSON
+          const userDataJson = userData.user_json || {};
+
+          // Prepare response with user data and preferences
+          const response = {
+            userId,
+            isNewUser: false,
+            email: userDataJson.email || email,
+            displayName: userDataJson.displayName || displayName,
+            createdAt: userData.created_at,
+          };
+
+          // Include preferences if they exist
+          if (userData.preferences !== null || userData.marked_shoots !== null) {
+            response.preferences = {
+              filterSettings: userData.preferences || {
+                future: true,
+                marked: false,
+                months: [],
+                search: "",
+                states: [],
+                notable: false,
+                shootTypes: [],
+              },
+              markedShoots: userData.marked_shoots || [],
+            };
+          }
+
+          return res.json(response);
+        }
+
+        // Check if this email already exists in apple_users (account linking)
+        let userId;
+        let createdAt;
+        let existingPreferences = null;
+        let linkedAccount = false;
+
+        console.log(`Checking if email ${email} exists in apple_users for account linking`);
+
+        const appleUserQuery = `
+          SELECT 
+            au.user_id,
+            au.display_name as apple_display_name,
+            u.created_at,
+            up.preferences,
+            up.marked_shoots
+          FROM apple_users au
+          INNER JOIN users u ON au.user_id = u.id
+          LEFT OUTER JOIN user_preferences up ON u.id = up.user_id
+          WHERE au.email = $1 AND au.email NOT LIKE '%@privaterelay.appleid.com'
+        `;
+
+        const appleUserResult = await client.query(appleUserQuery, [email]);
+
+        if (appleUserResult.rowCount > 0) {
+          // Found existing user with same email in apple_users - link accounts!
+          const existingData = appleUserResult.rows[0];
+          userId = existingData.user_id;
+          createdAt = existingData.created_at;
+          linkedAccount = true;
+
+          // Prepare existing preferences if they exist
+          if (existingData.preferences !== null || existingData.marked_shoots !== null) {
+            existingPreferences = {
+              filterSettings: existingData.preferences || {
+                future: true,
+                marked: false,
+                months: [],
+                search: "",
+                states: [],
+                notable: false,
+                shootTypes: [],
+              },
+              markedShoots: existingData.marked_shoots || [],
+            };
+          }
+
+          console.log(`🔗 Linking Firebase account to existing user ${userId} (previously signed in with Apple)`);
+        }
+
+        // If no existing user found, create new one
+        if (!userId) {
+          const newUser = await client.query(
+              `INSERT INTO users (id, created_at) 
+               VALUES (gen_random_uuid(), NOW()) 
+               RETURNING id, created_at`,
+          );
+          userId = newUser.rows[0].id;
+          createdAt = newUser.rows[0].created_at;
+          console.log(`Created new user: ${userId}`);
+        }
+
+        // Create Firebase user association with JSON data
+        const firebaseUserData = {
+          uid,
+          email,
+          displayName,
+          customClaims: {},
+        };
+
+        await client.query(
+            `INSERT INTO firebase_users (firebase_uid, user_id, user_json, linked_at) 
+             VALUES ($1, $2, $3, NOW())`,
+            [uid, userId, JSON.stringify(firebaseUserData)],
+        );
+
+        console.log(`Associated Firebase user ${uid} with user ${userId}`);
+
+        // Return user data with preferences if it's a linked account
+        const response = {
+          userId,
+          isNewUser: !linkedAccount,
+          email,
+          displayName,
+          createdAt,
+          preferences: existingPreferences,
+        };
+
+        if (linkedAccount) {
+          response.linkedAccount = true;
+          response.message = "Account successfully linked with existing Apple account";
+        }
+
+        return res.json(response);
+      } catch (error) {
+        console.error("Error associating Firebase user:", error);
+        return res.status(500).json({error: "Failed to associate Firebase user"});
       } finally {
         await client.end();
       }

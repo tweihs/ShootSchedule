@@ -26,6 +26,13 @@ struct ShootScheduleApp: App {
                         // Setup authenticated features now that user is logged in
                         dataManager.setupAuthenticatedFeatures()
                     }
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                        // App is returning to foreground, sync preferences from server
+                        print("📱 App returning to foreground, syncing preferences...")
+                        Task {
+                            await dataManager.fetchAndApplyUserPreferences()
+                        }
+                    }
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                         // App is going to background, save data
                         dataManager.saveUserData()
@@ -99,6 +106,15 @@ struct ShootScheduleApp: App {
                     // Delay the sign-in UI appearance to allow splash screen to show first
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         showSignIn = true
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    // App is returning to foreground, sync preferences if authenticated
+                    if authManager.isAuthenticated {
+                        print("📱 App returning to foreground, syncing preferences...")
+                        Task {
+                            await dataManager.fetchAndApplyUserPreferences()
+                        }
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in

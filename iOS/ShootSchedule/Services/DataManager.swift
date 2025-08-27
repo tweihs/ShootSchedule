@@ -54,6 +54,11 @@ class DataManager: ObservableObject {
         checkCalendarPermission()
         loadCalendarSyncPreference()
         
+        // Fetch user preferences from server on initial authentication
+        Task {
+            await fetchAndApplyUserPreferences()
+        }
+        
         // Debug available calendars if we have permission
         if hasCalendarPermission {
             debugAvailableCalendars()
@@ -1762,6 +1767,33 @@ class DataManager: ObservableObject {
             
         } catch {
             print("❌ Failed to sync preferences to server: \(error)")
+        }
+    }
+    
+    // Fetch preferences from server and apply to local state
+    func fetchAndApplyUserPreferences() async {
+        guard let authManager = authManager,
+              authManager.isAuthenticated,
+              let currentUser = authManager.currentUser else {
+            print("📥 Cannot fetch preferences - user not authenticated")
+            return
+        }
+        
+        do {
+            let userPreferencesService = UserPreferencesService()
+            if let serverPreferences = try await userPreferencesService.fetchUserPreferences(for: currentUser) {
+                print("📥 Fetched user preferences from server, applying to local state...")
+                
+                // Apply preferences using the existing mechanism
+                await MainActor.run {
+                    self.userPreferencesService.applyUserPreferences(serverPreferences, to: self)
+                    print("✅ Successfully applied server preferences to local state")
+                }
+            } else {
+                print("📥 No preferences found on server for user")
+            }
+        } catch {
+            print("❌ Failed to fetch preferences from server: \(error)")
         }
     }
     
