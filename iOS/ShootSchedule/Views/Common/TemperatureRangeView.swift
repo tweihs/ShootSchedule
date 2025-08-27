@@ -151,6 +151,14 @@ struct TemperatureRangeView_Previews: PreviewProvider {
             latitude: 33.4484,
             longitude: -112.0740,
             notabilityLevelRaw: 2,
+            morningTempF: 75,
+            afternoonTempF: 105,
+            morningTempC: 24,
+            afternoonTempC: 41,
+            durationDays: 3,
+            morningTempBand: "Warm",
+            afternoonTempBand: "Very Hot",
+            estimationMethod: "forecast",
             isMarked: false
         )
     }
@@ -181,6 +189,14 @@ struct TemperatureRangeView_Previews: PreviewProvider {
             latitude: 44.9778,
             longitude: -93.2650,
             notabilityLevelRaw: nil,
+            morningTempF: 15,
+            afternoonTempF: 28,
+            morningTempC: -9,
+            afternoonTempC: -2,
+            durationDays: 1,
+            morningTempBand: "Very Cold",
+            afternoonTempBand: "Cold",
+            estimationMethod: "historical",
             isMarked: true
         )
     }

@@ -30,6 +30,7 @@
 		1A1B1C602C7A3F5000123456 /* Views/Common/ViewToggleControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1B1C5F2C7A3F5000123456 /* Views/Common/ViewToggleControl.swift */; };
 		1A1B1C622C7A3F5000123456 /* Views/Map/ShootsMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1B1C612C7A3F5000123456 /* Views/Map/ShootsMapView.swift */; };
 		1A1B1C642C7A3F5000123456 /* Services/SQLiteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1B1C632C7A3F5000123456 /* Services/SQLiteService.swift */; };
+		1A1B1C6A2C7A3F5000123456 /* Services/UserPreferencesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1B1C692C7A3F5000123456 /* Services/UserPreferencesService.swift */; };
 		1A1B1C662C7A3F5000123456 /* shoots.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 1A1B1C652C7A3F5000123456 /* shoots.sqlite */; };
 		1A1B1C672C7A3F5000123456 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A1B1C682C7A3F5000123456 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
@@ -59,10 +60,11 @@
 		1A1B1C5F2C7A3F5000123456 /* Views/Common/ViewToggleControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Common/ViewToggleControl.swift; sourceTree = "<group>"; };
 		1A1B1C612C7A3F5000123456 /* Views/Map/ShootsMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Map/ShootsMapView.swift; sourceTree = "<group>"; };
 		1A1B1C632C7A3F5000123456 /* Services/SQLiteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SQLiteService.swift; sourceTree = "<group>"; };
+		1A1B1C692C7A3F5000123456 /* Services/UserPreferencesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/UserPreferencesService.swift; sourceTree = "<group>"; };
 		1A1B1C652C7A3F5000123456 /* shoots.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = shoots.sqlite; sourceTree = "<group>"; };
+		1A1B1C682C7A3F5000123456 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		91474EDD2E5C2DDF00304E7C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		91474EDE2E5CBFD700304E7C /* ShootSchedule.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShootSchedule.entitlements; sourceTree = "<group>"; };
-		1A1B1C682C7A3F5000123456 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +106,7 @@
 				1A1B1C432C7A3F5000123456 /* Services/DataManager.swift */,
 				1A1B1C632C7A3F5000123456 /* Services/SQLiteService.swift */,
 				1A1B1C5B2C7A3F5000123456 /* Services/UserDataManager.swift */,
+				1A1B1C692C7A3F5000123456 /* Services/UserPreferencesService.swift */,
 				1A1B1C2E2C7A3F4E00123456 /* Views/ContentView.swift */,
 				1A1B1C452C7A3F5000123456 /* Views/Common/SearchBar.swift */,
 				1A1B1C5D2C7A3F5000123456 /* Views/Common/MultiSelectDropdown.swift */,
@@ -224,6 +227,7 @@
 				1A1B1C5A2C7A3F5000123456 /* Views/Account/AccountDetailsView.swift in Sources */,
 				1A1B1C5C2C7A3F5000123456 /* Services/UserDataManager.swift in Sources */,
 				1A1B1C642C7A3F5000123456 /* Services/SQLiteService.swift in Sources */,
+				1A1B1C6A2C7A3F5000123456 /* Services/UserPreferencesService.swift in Sources */,
 				1A1B1C5E2C7A3F5000123456 /* Views/Common/MultiSelectDropdown.swift in Sources */,
 				1A1B1C602C7A3F5000123456 /* Views/Common/ViewToggleControl.swift in Sources */,
 				1A1B1C622C7A3F5000123456 /* Views/Map/ShootsMapView.swift in Sources */,

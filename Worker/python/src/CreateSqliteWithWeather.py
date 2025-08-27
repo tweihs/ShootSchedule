@@ -357,27 +357,39 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Default: Create from live PostgreSQL database with weather
-  python CreateSqliteWithWeather.py --sqlite shoots_with_weather.sqlite
+  # Default: Create from live PostgreSQL database with weather (uses default sqlite path)
+  python CreateSqliteWithWeather.py
+  
+  # Use specific SQLite path
+  python CreateSqliteWithWeather.py --sqlite custom_path/shoots_with_weather.sqlite
   
   # Use specific PostgreSQL URL
-  python CreateSqliteWithWeather.py --sqlite shoots_with_weather.sqlite --database-url "postgres://..."
+  python CreateSqliteWithWeather.py --database-url "postgres://..."
   
   # Use CSV file as source
-  python CreateSqliteWithWeather.py --source csv --csv data.csv --sqlite shoots_with_weather.sqlite
+  python CreateSqliteWithWeather.py --source csv --csv data.csv
         """
     )
     
     parser.add_argument('--source', choices=['csv', 'postgres'], default='postgres',
                        help='Data source: postgres (default) or csv')
-    parser.add_argument('--sqlite', required=True, 
-                       help='Path to the output SQLite file')
+    parser.add_argument('--sqlite', 
+                       help='Path to the output SQLite file (default: ./data/shoots_with_weather.sqlite)')
     parser.add_argument('--csv', 
                        help='Path to the input CSV file (required when source=csv)')
     parser.add_argument('--database-url', 
                        help='PostgreSQL database URL (optional, reads from .env if not provided)')
 
     args = parser.parse_args()
+
+    # Set default SQLite file if not provided
+    if not args.sqlite:
+        args.sqlite = './data/shoots_with_weather.sqlite'
+    
+    # Ensure the data directory exists
+    sqlite_dir = os.path.dirname(args.sqlite)
+    if sqlite_dir and not os.path.exists(sqlite_dir):
+        os.makedirs(sqlite_dir, exist_ok=True)
 
     try:
         if args.source == 'csv':

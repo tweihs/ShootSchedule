@@ -99,7 +99,10 @@ struct ShootTitleView_Previews: PreviewProvider {
         startDate: Date(), endDate: nil, clubName: "Test Club", address1: nil, address2: nil,
         city: "Test City", state: "TX", zip: nil, country: "USA", zone: nil,
         clubEmail: nil, pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
-        eventType: "NSCA", region: nil, fullAddress: nil, latitude: nil, longitude: nil
+        eventType: "NSCA", region: nil, fullAddress: nil, latitude: nil, longitude: nil,
+        notabilityLevelRaw: nil, morningTempF: nil, afternoonTempF: nil, morningTempC: nil,
+        afternoonTempC: nil, durationDays: nil, morningTempBand: nil, afternoonTempBand: nil,
+        estimationMethod: nil, isMarked: false
     )
     
     static let stateShoot = Shoot(
@@ -107,7 +110,10 @@ struct ShootTitleView_Previews: PreviewProvider {
         startDate: Date(), endDate: nil, clubName: "Test Club", address1: nil, address2: nil,
         city: "Test City", state: "TX", zip: nil, country: "USA", zone: nil,
         clubEmail: nil, pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
-        eventType: "NSSA", region: nil, fullAddress: nil, latitude: nil, longitude: nil
+        eventType: "NSSA", region: nil, fullAddress: nil, latitude: nil, longitude: nil,
+        notabilityLevelRaw: nil, morningTempF: nil, afternoonTempF: nil, morningTempC: nil,
+        afternoonTempC: nil, durationDays: nil, morningTempBand: nil, afternoonTempBand: nil,
+        estimationMethod: nil, isMarked: false
     )
     
     static let regularShoot = Shoot(
@@ -115,7 +121,10 @@ struct ShootTitleView_Previews: PreviewProvider {
         startDate: Date(), endDate: nil, clubName: "Test Club", address1: nil, address2: nil,
         city: "Test City", state: "TX", zip: nil, country: "USA", zone: nil,
         clubEmail: nil, pocName: nil, pocPhone: nil, pocEmail: nil, clubID: nil,
-        eventType: "ATA", region: nil, fullAddress: nil, latitude: nil, longitude: nil
+        eventType: "ATA", region: nil, fullAddress: nil, latitude: nil, longitude: nil,
+        notabilityLevelRaw: nil, morningTempF: nil, afternoonTempF: nil, morningTempC: nil,
+        afternoonTempC: nil, durationDays: nil, morningTempBand: nil, afternoonTempBand: nil,
+        estimationMethod: nil, isMarked: false
     )
     
     static var previews: some View {

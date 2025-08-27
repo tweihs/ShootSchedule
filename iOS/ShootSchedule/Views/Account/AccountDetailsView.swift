@@ -9,6 +9,7 @@ import SwiftUI
 import CoreLocation
 import EventKit
 import UIKit
+import AuthenticationServices
 
 struct AccountDetailsView: View {
     @EnvironmentObject var authManager: AuthenticationManager
@@ -59,6 +60,94 @@ struct AccountDetailsView: View {
                         Spacer()
                     }
                     .padding()
+                    
+                    // Sign In Section
+                    if !authManager.isAuthenticated {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionHeader(title: "Account")
+                            
+                            VStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Sign In to use Shoot Schedule")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("Save your marked shoots, filters, and settings across devices")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                
+                                if authManager.isSigningIn {
+                                    HStack {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                        Text("Signing in...")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.gray.opacity(0.1))
+                                    .cornerRadius(10)
+                                } else {
+                                    SignInWithAppleButton(
+                                        onRequest: { request in
+                                            // This will be handled by AuthenticationManager
+                                        },
+                                        onCompletion: { result in
+                                            // This will be handled by AuthenticationManager
+                                        }
+                                    )
+                                    .signInWithAppleButtonStyle(.black)
+                                    .frame(height: 50)
+                                    .onTapGesture {
+                                        authManager.signInWithApple()
+                                    }
+                                }
+                            }
+                            .padding()
+                            .background(Color.white.opacity(0.9))
+                            .cornerRadius(10)
+                        }
+                        .padding(.horizontal)
+                    } else {
+                        // User Info Section (when signed in)
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionHeader(title: "Account")
+                            
+                            VStack(spacing: 12) {
+                                HStack {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.green)
+                                        .frame(width: 24)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(authManager.currentUser?.displayName ?? "Apple User")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(.primary)
+                                        
+                                        Text(authManager.currentUser?.email ?? "Signed in with Apple")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Button("Sign Out") {
+                                        authManager.signOut()
+                                    }
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.red)
+                                }
+                            }
+                            .padding()
+                            .background(Color.white.opacity(0.9))
+                            .cornerRadius(10)
+                        }
+                        .padding(.horizontal)
+                    }
                     
                     // Preferences Section
                     VStack(alignment: .leading, spacing: 0) {
@@ -373,7 +462,7 @@ struct AccountDetailsView: View {
                     print("📅 🔍 AccountDetailsView appeared - debugging calendars...")
                     dataManager.debugAvailableCalendars()
                     
-                    // Also check for duplicate events and deduplicate them
+                    // Only detect duplicates for logging, don't automatically deduplicate
                     Task {
                         await dataManager.detectAndLogDuplicateEvents()
                     }
@@ -511,6 +600,9 @@ struct AccountDetailsView: View {
     private func saveTemperaturePreference(_ fahrenheit: Bool) {
         UserDefaults.standard.set(fahrenheit, forKey: "useFahrenheit")
         UserDefaults.standard.synchronize()
+        
+        // Sync preference change to backend
+        dataManager.syncPreferencesIfAuthenticated()
     }
     
     private func handleCalendarSyncToggle(_ newValue: Bool) {

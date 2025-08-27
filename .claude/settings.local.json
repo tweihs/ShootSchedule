@@ -8,9 +8,43 @@
       "Bash(git commit:*)",
       "Bash(gh repo create:*)",
       "Bash(mv:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(git push:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(swift package init:*)",
+      "Bash(open:*)",
+      "Bash(git restore:*)",
+      "Bash(grep:*)",
+      "Bash(psql:*)",
+      "Bash(python:*)",
+      "Bash(pip3 install:*)",
+      "Bash(sqlite3:*)",
+      "Bash(swift build)",
+      "Bash(swift:*)",
+      "Bash(timeout 60s xcodebuild:*)",
+      "Bash(/dev/null)",
+      "Bash(echo:*)",
+      "WebSearch",
+      "Bash(sips:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm install)",
+      "Bash(npm test)",
+      "Bash(npm run deploy:*)",
+      "Bash(npm run lint:*)",
+      "Bash(node:*)",
+      "Bash(npm run logs:*)",
+      "Bash(firebase functions:log:*)",
+      "Bash(firebase functions:delete:*)",
+      "Bash(chmod:*)",
+      "Read(//Users/tweihs/**)",
+      "Bash(cd:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/Users/tweihs/Library/Developer/Xcode/DerivedData/ShootSchedule-fmaemkefbxanfoenjsvzbbcvpvvo/Build/Products/Debug-iphonesimulator/ShootSchedule.app",
+      "/Users/tweihs/Library/Developer/Xcode/DerivedData",
+      "/Users/tweihs/Library"
+    ]
   }
 }
