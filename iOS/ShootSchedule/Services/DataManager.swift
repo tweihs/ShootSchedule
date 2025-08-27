@@ -118,7 +118,7 @@ class DataManager: ObservableObject {
         }
     }
     
-    private func applyMarkedStatus() {
+    func applyMarkedStatus() {
         // Apply marked status to all shoots
         shoots = shoots.map { shoot in
             var updatedShoot = shoot
@@ -130,6 +130,10 @@ class DataManager: ObservableObject {
         print("📊 SHOOTS PROCESSED: Total=\(shoots.count), Marked=\(actualMarkedShoots.count)")
         print("📊 MARKED SHOOT IDs IN DATA: \(actualMarkedShoots.map { $0.id }.sorted())")
         print("📊 MARKED SHOOT IDs IN STORAGE: \(Array(markedShootIds).sorted())")
+        print("📊 MARKED COUNT DISPLAYED: \(markedShootsCount)")
+        
+        // Ensure UI updates with correct count
+        objectWillChange.send()
     }
     
     func markShoot(_ shoot: Shoot) {
@@ -262,7 +266,7 @@ class DataManager: ObservableObject {
         print("💾 USER DATA SAVE COMPLETE")
     }
     
-    private func saveMarkedShoots() {
+    func saveMarkedShoots() {
         if let data = try? JSONEncoder().encode(markedShootIds) {
             // Save to iCloud
             let iCloudStore = NSUbiquitousKeyValueStore.default
@@ -274,6 +278,9 @@ class DataManager: ObservableObject {
             UserDefaults.standard.set(data, forKey: "\(markedShootsKey)_backup")
             UserDefaults.standard.synchronize()
             print("💾 BACKUP SAVED TO USERDEFAULTS: \(markedShootIds.count) shoots")
+            
+            // Sync to database if authenticated
+            syncPreferencesIfAuthenticated()
         }
     }
     

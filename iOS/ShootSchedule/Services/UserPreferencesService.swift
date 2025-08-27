@@ -300,7 +300,25 @@ class UserPreferencesService: ObservableObject {
             }
             
             // Update marked shoots
+            let previousMarkedShootIds = dataManager.markedShootIds
             dataManager.markedShootIds = Set(preferences.markedShoots)
+            
+            // Only save locally without triggering sync back to server
+            if previousMarkedShootIds != dataManager.markedShootIds {
+                // Save to local storage only (iCloud and UserDefaults)
+                if let data = try? JSONEncoder().encode(dataManager.markedShootIds) {
+                    let iCloudStore = NSUbiquitousKeyValueStore.default
+                    iCloudStore.set(data, forKey: "markedShoots")
+                    iCloudStore.synchronize()
+                    UserDefaults.standard.set(data, forKey: "markedShoots_backup")
+                    UserDefaults.standard.synchronize()
+                    print("📥 Updated local marked shoots from server: \(Array(dataManager.markedShootIds).sorted())")
+                }
+                
+                dataManager.applyMarkedStatus() // Apply to shoots list
+                // Trigger UI update for marked count
+                dataManager.objectWillChange.send()
+            }
             
             // Update temperature preference
             let useFahrenheit = preferences.temperatureUnit == "fahrenheit"
