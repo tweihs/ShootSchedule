@@ -98,7 +98,9 @@ class SQLiteService: ObservableObject {
         }
         
         var shoots: [Shoot] = []
+        // Load shoots from the previous year onwards to include recent past events
         let currentYear = Calendar.current.component(.year, from: Date())
+        let previousYear = currentYear - 1
         let querySQL = """
             SELECT "Shoot ID", 
                    TRIM("Shoot Name") as "Shoot Name", 
@@ -134,7 +136,7 @@ class SQLiteService: ObservableObject {
                    "morning_temp_f", "afternoon_temp_f", "morning_temp_c", "afternoon_temp_c", 
                    "duration_days", "morning_temp_band", "afternoon_temp_band", "estimation_method"
             FROM shoots
-            WHERE strftime('%Y', "Start Date") >= '\(currentYear)'
+            WHERE strftime('%Y', "Start Date") >= '\(previousYear)'
             ORDER BY "Start Date" ASC
         """
         
@@ -221,7 +223,7 @@ class SQLiteService: ObservableObject {
         }
         
         sqlite3_finalize(statement)
-        print("🗄️ Successfully loaded \(shoots.count) shoots from SQLite database")
+        print("🗄️ Successfully loaded \(shoots.count) shoots from SQLite database (from \(previousYear) onwards)")
         
         if shoots.count > 0 {
             let currentYear = Calendar.current.component(.year, from: Date())
