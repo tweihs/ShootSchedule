@@ -120,8 +120,22 @@ def run_workflow():
             print("-" * 40)
             
             # Upload the generated database
-            database_file = "shoots.sqlite"
-            if os.path.exists(database_file):
+            # Check multiple locations for the database file
+            database_locations = [
+                "data/shoots.sqlite",
+                "shoots.sqlite",
+                "../data/shoots.sqlite",
+                "../../data/shoots.sqlite"
+            ]
+            
+            database_file = None
+            for location in database_locations:
+                if os.path.exists(location):
+                    database_file = location
+                    print(f"📍 Found database at: {location}")
+                    break
+            
+            if database_file:
                 public_url = upload_to_firebase(database_file)
                 if public_url:
                     print("✅ Database uploaded to Firebase Storage")
@@ -158,8 +172,16 @@ def run_workflow():
                 
                 # Generate and upload
                 generate_database()
-                database_file = "shoots.sqlite"
-                if os.path.exists(database_file):
+                
+                # Look for database in multiple locations
+                database_locations = ["data/shoots.sqlite", "shoots.sqlite", "../data/shoots.sqlite", "../../data/shoots.sqlite"]
+                database_file = None
+                for location in database_locations:
+                    if os.path.exists(location):
+                        database_file = location
+                        break
+                
+                if database_file:
                     public_url = upload_to_firebase(database_file)
                     if public_url:
                         workflow_steps.append({

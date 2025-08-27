@@ -92,12 +92,29 @@ def upload_to_firebase(file_path, bucket_name=None, credentials_path=None, blob_
     # Initialize Firebase Admin SDK if not already initialized
     if not firebase_admin._apps:
         try:
-            # Use provided credentials path or environment variable
+            # Use provided credentials path, check common locations, or use environment variable
             if not credentials_path:
-                credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+                # Check for serviceAccountKey.json in common locations
+                possible_paths = [
+                    "serviceAccountKey.json",  # Current directory
+                    "../serviceAccountKey.json",  # Parent directory
+                    "../../serviceAccountKey.json",  # Two directories up (project root from python/src)
+                    os.path.expanduser("~/serviceAccountKey.json"),  # Home directory
+                ]
+                
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        credentials_path = path
+                        print(f"🔍 Found credentials at: {path}")
+                        break
+                
+                # Fall back to environment variable
+                if not credentials_path:
+                    credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
             
             if not credentials_path:
-                print("❌ Error: No credentials provided")
+                print("❌ Error: No credentials found")
+                print("   Checked: serviceAccountKey.json in current, parent, and project root")
                 print("   Set GOOGLE_APPLICATION_CREDENTIALS environment variable")
                 print("   Or use --credentials flag")
                 return None
@@ -206,7 +223,8 @@ Environment Variables:
         """
     )
     
-    parser.add_argument('file', help='Path to SQLite file to upload')
+    parser.add_argument('file', nargs='?', default='data/shoots.sqlite',
+                       help='Path to SQLite file to upload (default: data/shoots.sqlite)')
     parser.add_argument('--bucket', help='Firebase Storage bucket name')
     parser.add_argument('--credentials', help='Path to service account key JSON')
     parser.add_argument('--blob-name', default='shoots.sqlite', 
@@ -216,9 +234,28 @@ Environment Variables:
     
     args = parser.parse_args()
     
+    # If using default path, check multiple locations for the data directory
+    if args.file == 'data/shoots.sqlite' and not os.path.exists(args.file):
+        possible_paths = [
+            'data/shoots.sqlite',  # Current directory
+            '../data/shoots.sqlite',  # Parent directory
+            '../../data/shoots.sqlite',  # Project root from python/src
+            'shoots.sqlite',  # Current directory without data/
+            '../shoots.sqlite',  # Parent directory
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                args.file = path
+                print(f"🔍 Found database at: {path}")
+                break
+    
     # Check if file exists
     if not os.path.exists(args.file):
         print(f"❌ Error: File not found: {args.file}")
+        if args.file == 'data/shoots.sqlite':
+            print("   Checked: data/shoots.sqlite in current, parent, and project directories")
+            print("   Please specify the path to your SQLite file")
         sys.exit(1)
     
     # Verify SQLite if requested

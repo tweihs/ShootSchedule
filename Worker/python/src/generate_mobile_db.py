@@ -14,12 +14,21 @@ def main():
     print("🚀 ShootSchedule Mobile Database Generator")
     print("=" * 50)
     
-    # Default output location
-    output_file = "shoots.sqlite"
+    # Default output location in data directory
+    output_file = "data/shoots.sqlite"
     
     # Check if custom output path provided
     if len(sys.argv) > 1:
         output_file = sys.argv[1]
+    else:
+        # Ensure data directory exists
+        os.makedirs("data", exist_ok=True)
+        # Also check parent directories if running from python/src
+        if not os.path.exists("data"):
+            if os.path.exists("../../data"):
+                output_file = "../../data/shoots.sqlite"
+            elif os.path.exists("../data"):
+                output_file = "../data/shoots.sqlite"
     
     print(f"📱 Generating mobile database: {output_file}")
     print("🔗 Connecting to live PostgreSQL database...")
