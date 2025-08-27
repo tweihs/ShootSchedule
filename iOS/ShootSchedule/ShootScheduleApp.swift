@@ -30,6 +30,8 @@ struct ShootScheduleApp: App {
                         // App is returning to foreground, sync preferences from server
                         print("📱 App returning to foreground, syncing preferences...")
                         Task {
+                            // Small delay to ensure UI is ready
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
                             await dataManager.fetchAndApplyUserPreferences()
                         }
                     }
@@ -113,6 +115,8 @@ struct ShootScheduleApp: App {
                     if authManager.isAuthenticated {
                         print("📱 App returning to foreground, syncing preferences...")
                         Task {
+                            // Small delay to ensure UI is ready
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
                             await dataManager.fetchAndApplyUserPreferences()
                         }
                     }

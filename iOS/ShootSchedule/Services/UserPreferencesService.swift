@@ -303,22 +303,27 @@ class UserPreferencesService: ObservableObject {
             let previousMarkedShootIds = dataManager.markedShootIds
             dataManager.markedShootIds = Set(preferences.markedShoots)
             
-            // Only save locally without triggering sync back to server
-            if previousMarkedShootIds != dataManager.markedShootIds {
-                // Save to local storage only (iCloud and UserDefaults)
-                if let data = try? JSONEncoder().encode(dataManager.markedShootIds) {
-                    let iCloudStore = NSUbiquitousKeyValueStore.default
-                    iCloudStore.set(data, forKey: "markedShoots")
-                    iCloudStore.synchronize()
-                    UserDefaults.standard.set(data, forKey: "markedShoots_backup")
-                    UserDefaults.standard.synchronize()
-                    print("📥 Updated local marked shoots from server: \(Array(dataManager.markedShootIds).sorted())")
-                }
-                
-                dataManager.applyMarkedStatus() // Apply to shoots list
-                // Trigger UI update for marked count
-                dataManager.objectWillChange.send()
+            print("📥 Applying marked shoots from server:")
+            print("   Previous local: \(Array(previousMarkedShootIds).sorted()) (count: \(previousMarkedShootIds.count))")
+            print("   New from server: \(Array(dataManager.markedShootIds).sorted()) (count: \(dataManager.markedShootIds.count))")
+            
+            // Always update local storage and UI when receiving from server
+            // Save to local storage only (iCloud and UserDefaults)
+            if let data = try? JSONEncoder().encode(dataManager.markedShootIds) {
+                let iCloudStore = NSUbiquitousKeyValueStore.default
+                iCloudStore.set(data, forKey: "markedShoots")
+                iCloudStore.synchronize()
+                UserDefaults.standard.set(data, forKey: "markedShoots_backup")
+                UserDefaults.standard.synchronize()
+                print("📥 Saved marked shoots to local storage: \(Array(dataManager.markedShootIds).sorted())")
             }
+            
+            // Always apply to shoots list and update UI
+            dataManager.applyMarkedStatus() // Apply to shoots list
+            // Trigger UI update for marked count
+            dataManager.objectWillChange.send()
+            
+            print("📥 Marked count after apply: \(dataManager.markedShootsCount)")
             
             // Update temperature preference
             let useFahrenheit = preferences.temperatureUnit == "fahrenheit"

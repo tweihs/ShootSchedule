@@ -56,6 +56,8 @@ class DataManager: ObservableObject {
         
         // Fetch user preferences from server on initial authentication
         Task {
+            // Small delay to ensure shoots are loaded first
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             await fetchAndApplyUserPreferences()
         }
         
