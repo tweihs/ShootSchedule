@@ -17,7 +17,8 @@ from DownloadShootFilesWithLastModified import download_files
 from MergeShootData import merge
 from GeocodeEventData import main as geocode_data
 from CreatePostgresLoadScript import load_and_insert_data
-from deploy_mobile_db import main as deploy_database
+from generate_mobile_db import main as generate_database
+from UploadSqliteToCloud import upload_to_firebase
 
 def run_workflow():
     """Run the complete workflow for processing and deploying shoot data."""
@@ -102,28 +103,46 @@ def run_workflow():
                 'status': 'success'
             })
             
-            # Step 5: Generate and deploy mobile database
-            print("\n📱 Step 5: Generating and deploying mobile database...")
+            # Step 5: Generate mobile database
+            print("\n📱 Step 5: Generating mobile database...")
             print("-" * 40)
             
-            # Set environment variable to include weather data
-            os.environ['INCLUDE_WEATHER'] = 'true'
-            
-            # Run deployment
-            deploy_database()
-            print("✅ Mobile database deployed")
+            # Generate the SQLite database
+            generate_database()
+            print("✅ Mobile database generated")
             workflow_steps.append({
-                'step': 'deploy',
+                'step': 'generate_database',
                 'status': 'success'
             })
             
-            # Read deployment info
-            if os.path.exists('deployment_info.json'):
-                with open('deployment_info.json', 'r') as f:
-                    deployment_info = json.load(f)
+            # Step 6: Upload to Firebase Storage
+            print("\n☁️ Step 6: Uploading database to Firebase Storage...")
+            print("-" * 40)
+            
+            # Upload the generated database
+            database_file = "shoots.sqlite"
+            if os.path.exists(database_file):
+                public_url = upload_to_firebase(database_file)
+                if public_url:
+                    print("✅ Database uploaded to Firebase Storage")
                     workflow_steps.append({
-                        'deployment': deployment_info
+                        'step': 'upload',
+                        'status': 'success',
+                        'url': public_url
                     })
+                else:
+                    print("❌ Failed to upload database")
+                    workflow_steps.append({
+                        'step': 'upload',
+                        'status': 'failed'
+                    })
+            else:
+                print("❌ Database file not found")
+                workflow_steps.append({
+                    'step': 'upload',
+                    'status': 'failed',
+                    'error': 'Database file not found'
+                })
             
         else:
             print("ℹ️ No new files to process - schedules are up to date")
@@ -136,12 +155,25 @@ def run_workflow():
             # Still deploy the database if forced
             if os.getenv('FORCE_DEPLOY', 'false').lower() == 'true':
                 print("\n🔄 Force deploy requested...")
-                deploy_database()
-                workflow_steps.append({
-                    'step': 'deploy',
-                    'status': 'success',
-                    'forced': True
-                })
+                
+                # Generate and upload
+                generate_database()
+                database_file = "shoots.sqlite"
+                if os.path.exists(database_file):
+                    public_url = upload_to_firebase(database_file)
+                    if public_url:
+                        workflow_steps.append({
+                            'step': 'force_deploy',
+                            'status': 'success',
+                            'forced': True,
+                            'url': public_url
+                        })
+                    else:
+                        workflow_steps.append({
+                            'step': 'force_deploy',
+                            'status': 'failed',
+                            'forced': True
+                        })
         
         # Calculate total time
         total_time = time.time() - start_time
