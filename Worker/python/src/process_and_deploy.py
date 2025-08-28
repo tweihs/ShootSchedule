@@ -3,12 +3,19 @@
 Complete workflow for processing shoot schedules and deploying mobile database.
 This script orchestrates the entire process from downloading Excel files to 
 deploying the SQLite database to cloud storage.
+
+Usage:
+    python process_and_deploy.py [--force]
+    
+Options:
+    --force  Force re-download and processing of all files, ignoring cache
 """
 
 import os
 import sys
 import time
 import json
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -20,11 +27,17 @@ from CreatePostgresLoadScript import load_and_insert_data
 from generate_mobile_db import main as generate_database
 from UploadSqliteToCloud import upload_to_firebase
 
-def run_workflow():
-    """Run the complete workflow for processing and deploying shoot data."""
+def run_workflow(force=False):
+    """Run the complete workflow for processing and deploying shoot data.
+    
+    Args:
+        force: If True, force re-download and processing, ignoring cache
+    """
     
     print("=" * 60)
     print("🎯 ShootSchedule Complete Processing Workflow")
+    if force:
+        print("🔄 FORCE MODE: Re-downloading all files")
     print("=" * 60)
     print(f"⏰ Started at: {datetime.now().isoformat()}")
     print()
@@ -69,10 +82,20 @@ def run_workflow():
         # Filter URLs to only current year NSSA and NSCA
         urls = [urls[0], urls[2]]  # Current year NSSA and NSCA
         
+        # If force mode, delete the last_modified.json cache file
+        if force:
+            cache_file = os.path.join(output_dir, 'last_modified.json')
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
+                print(f"🗑️ Removed cache file: {cache_file}")
+        
         downloaded = download_files(urls, output_dir)
         
-        if any(downloaded):
-            print("✅ New files downloaded")
+        if any(downloaded) or force:
+            if any(downloaded):
+                print("✅ New files downloaded")
+            elif force:
+                print("🔄 Force mode - processing existing files")
             workflow_steps.append({
                 'step': 'download',
                 'status': 'success',
@@ -176,8 +199,8 @@ def run_workflow():
                 'reason': 'no_updates'
             })
             
-            # Still deploy the database if forced
-            if os.getenv('FORCE_DEPLOY', 'false').lower() == 'true':
+            # Still deploy the database if forced via environment or parameter
+            if os.getenv('FORCE_DEPLOY', 'false').lower() == 'true' or force:
                 print("\n🔄 Force deploy requested...")
                 
                 # Generate and upload
@@ -253,6 +276,17 @@ def run_workflow():
 def main():
     """Main entry point."""
     
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Process shoot schedules and deploy mobile database'
+    )
+    parser.add_argument(
+        '--force', 
+        action='store_true',
+        help='Force re-download and processing of all files, ignoring cache'
+    )
+    args = parser.parse_args()
+    
     # Check for required environment variables
     required_vars = ['DATABASE_URL']
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -267,10 +301,11 @@ def main():
         import schedule
         
         print("🔄 Running in continuous mode (every 6 hours)")
-        schedule.every(6).hours.do(run_workflow)
+        # Pass force flag to scheduled runs if needed
+        schedule.every(6).hours.do(lambda: run_workflow(force=args.force))
         
         # Run immediately
-        run_workflow()
+        run_workflow(force=args.force)
         
         # Keep running
         while True:
@@ -278,7 +313,7 @@ def main():
             time.sleep(60)  # Check every minute
     else:
         # Run once
-        sys.exit(run_workflow())
+        sys.exit(run_workflow(force=args.force))
 
 if __name__ == "__main__":
     main()

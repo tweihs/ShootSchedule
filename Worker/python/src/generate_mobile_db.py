@@ -29,8 +29,8 @@ def main():
         data_dir = 'data'
         output_file = 'data/shoots.sqlite'
     
-    # Check if custom output path provided
-    if len(sys.argv) > 1:
+    # Check if custom output path provided (and it's not a flag)
+    if len(sys.argv) > 1 and not sys.argv[1].startswith('--'):
         output_file = sys.argv[1]
     else:
         # Ensure data directory exists

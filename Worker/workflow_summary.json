@@ -1,16 +1,31 @@
 {
-  "timestamp": "2025-08-28T13:48:05.212356",
-  "duration_seconds": 5.226194858551025,
+  "timestamp": "2025-08-28T14:01:29.806974",
+  "duration_seconds": 14.178271055221558,
   "steps": [
     {
       "step": "download",
-      "status": "skipped",
-      "reason": "no_updates"
+      "status": "success",
+      "files_updated": 2
     },
     {
-      "step": "force_deploy",
+      "step": "merge",
+      "status": "success"
+    },
+    {
+      "step": "geocode",
+      "status": "success"
+    },
+    {
+      "step": "postgres_load",
+      "status": "success"
+    },
+    {
+      "step": "generate_database",
+      "status": "success"
+    },
+    {
+      "step": "upload",
       "status": "success",
-      "forced": true,
       "url": "https://firebasestorage.googleapis.com/v0/b/shootsdb-11bb7.firebasestorage.app/o/shoots.sqlite?alt=media"
     }
   ],
