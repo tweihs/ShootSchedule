@@ -262,6 +262,10 @@ class SQLiteService: ObservableObject {
                 openDatabase()
                 
                 print("✅ Database updated successfully")
+                
+                // Post notification that database was updated
+                NotificationCenter.default.post(name: Notification.Name("DatabaseUpdated"), object: nil)
+                
                 return true
             } else {
                 // Remove invalid temp file

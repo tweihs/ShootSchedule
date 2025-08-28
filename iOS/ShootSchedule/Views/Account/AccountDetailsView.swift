@@ -524,11 +524,25 @@ struct AccountDetailsView: View {
                     updatePermissionStatuses()
                     dataManager.checkCalendarPermission()
                     currentCalendarInfo = dataManager.getCurrentCalendarInfo()
+                    // Refresh database info to show updated timestamp
+                    loadDatabaseInfo()
+                }
+                
+                // Listen for database updates
+                NotificationCenter.default.addObserver(
+                    forName: Notification.Name("DatabaseUpdated"),
+                    object: nil,
+                    queue: .main
+                ) { _ in
+                    // Refresh database info when database is updated
+                    loadDatabaseInfo()
+                    shootCount = dataManager.shoots.count
                 }
             }
             .onDisappear {
                 // Remove notification observers when view disappears
                 NotificationCenter.default.removeObserver(self, name: UIApplication.willEnterForegroundNotification, object: nil)
+                NotificationCenter.default.removeObserver(self, name: Notification.Name("DatabaseUpdated"), object: nil)
             }
             .onChange(of: useFahrenheit) { newValue in
                 saveTemperaturePreference(newValue)
