@@ -31,7 +31,8 @@ struct UserPreferences: Codable {
         filterSettings = try container.decode(FilterSettings.self, forKey: .filterSettings)
         markedShoots = try container.decodeIfPresent([Int].self, forKey: .markedShoots) ?? []
         temperatureUnit = try container.decodeIfPresent(String.self, forKey: .temperatureUnit) ?? "fahrenheit"
-        calendarSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .calendarSyncEnabled) ?? false
+        // Use local value as default if server doesn't have the preference
+        calendarSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .calendarSyncEnabled) ?? UserDefaults.standard.bool(forKey: "calendarSyncEnabled")
     }
     
     // Standard initializer for creating instances
@@ -164,7 +165,7 @@ class UserPreferencesService: ObservableObject {
                     filterSettings: filterSettings,
                     markedShoots: prefs.markedShoots ?? [],
                     temperatureUnit: "fahrenheit", // Default, will be overridden if preferences exist
-                    calendarSyncEnabled: false // Default, will be overridden if preferences exist
+                    calendarSyncEnabled: UserDefaults.standard.bool(forKey: "calendarSyncEnabled") // Use local value as default
                 )
                 
                 print("📥 Preferences included in response for existing user")
@@ -356,7 +357,7 @@ class UserPreferencesService: ObservableObject {
             let useFahrenheit = preferences.temperatureUnit == "fahrenheit"
             UserDefaults.standard.set(useFahrenheit, forKey: "useFahrenheit")
             
-            // Update calendar sync
+            // Update calendar sync - apply server setting to all devices
             dataManager.setCalendarSyncEnabled(preferences.calendarSyncEnabled)
         }
     }
