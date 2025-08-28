@@ -90,8 +90,9 @@ def main(output_dir):
 
 if __name__ == "__main__":
     # Determine if running inside a Docker container
-    if os.path.exists('/.dockerenv'):
-        output_dir = "/app/data"
+    if os.path.exists('/.dockerenv') or os.getenv('IN_DOCKER'):
+        # Docker workdir is /usr/src/app, not /app
+        output_dir = "data"
     else:
         output_dir = "../data"
 

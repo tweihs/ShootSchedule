@@ -44,7 +44,8 @@ def run_workflow(force=False):
     
     # Determine output directory - always use project root's data directory
     if os.path.exists('/.dockerenv') or os.getenv('IN_DOCKER'):
-        output_dir = "/app/data"
+        # Docker workdir is /usr/src/app, files are relative to that
+        output_dir = "data"
     else:
         # Get the script's directory and find project root
         script_dir = os.path.dirname(os.path.abspath(__file__))

@@ -159,8 +159,9 @@ def load_and_insert_data(output_dir):
 
 if __name__ == "__main__":
     # Determine if running inside a Docker container
-    if os.path.exists('/.dockerenv'):
-        output_dir = "/app/data"
+    if os.path.exists('/.dockerenv') or os.getenv('IN_DOCKER'):
+        # Docker workdir is /usr/src/app, files are relative to that
+        output_dir = "data"
     else:
         output_dir = "../data"
 
