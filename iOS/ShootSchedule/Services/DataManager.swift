@@ -24,6 +24,7 @@ class DataManager: ObservableObject {
     @Published var error: Error?
     @Published var hasCalendarPermission: Bool = false
     @Published var isCalendarSyncEnabled: Bool = false
+    @Published var databaseLastUpdated: Date?
     
     // Reference to filter optionssho for auto-disabling marked filter
     weak var filterOptions: FilterOptions?
@@ -172,6 +173,21 @@ class DataManager: ObservableObject {
         } else {
             shoots = loadedShoots
             applyMarkedStatus()
+        }
+        
+        // Update database timestamp
+        updateDatabaseTimestamp()
+    }
+    
+    private func updateDatabaseTimestamp() {
+        let databaseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("shoots.sqlite")
+        
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
+            databaseLastUpdated = attributes[.modificationDate] as? Date
+        } catch {
+            print("Error getting database file attributes: \(error)")
+            databaseLastUpdated = nil
         }
     }
     

@@ -24,7 +24,6 @@ struct AccountDetailsView: View {
     @State private var showingCalendarSourceSelection = false
     @State private var availableCalendarSources: [(id: String, title: String, type: String)] = []
     @State private var currentCalendarInfo: (name: String, source: String)? = nil
-    @State private var databaseLastUpdated: Date?
     @State private var shootCount: Int = 0
     private let locationManager = CLLocationManager()
     private let eventStore = EKEventStore()
@@ -285,7 +284,7 @@ struct AccountDetailsView: View {
                                         .font(.system(size: 15, weight: .medium))
                                         .foregroundColor(.primary)
                                     
-                                    if let lastUpdated = databaseLastUpdated {
+                                    if let lastUpdated = dataManager.databaseLastUpdated {
                                         Text(formatDate(lastUpdated))
                                             .font(.system(size: 13))
                                             .foregroundColor(.secondary)
@@ -373,7 +372,7 @@ struct AccountDetailsView: View {
                                     
                                     // Refresh database info after update
                                     await MainActor.run {
-                                        loadDatabaseInfo()
+                                        // Database info updates automatically via @Published property
                                     }
                                 }
                             }) {
@@ -502,8 +501,8 @@ struct AccountDetailsView: View {
                 // Load current calendar info
                 currentCalendarInfo = dataManager.getCurrentCalendarInfo()
                 
-                // Load database info
-                loadDatabaseInfo()
+                // Initialize shoot count
+                shootCount = dataManager.shoots.count
                 
                 // Debug available calendars when settings view appears
                 // Use background queue to avoid blocking UI
@@ -524,8 +523,7 @@ struct AccountDetailsView: View {
                     updatePermissionStatuses()
                     dataManager.checkCalendarPermission()
                     currentCalendarInfo = dataManager.getCurrentCalendarInfo()
-                    // Refresh database info to show updated timestamp
-                    loadDatabaseInfo()
+                    // Database info updates automatically via @Published property
                 }
                 
                 // Listen for database updates
@@ -534,8 +532,7 @@ struct AccountDetailsView: View {
                     object: nil,
                     queue: .main
                 ) { _ in
-                    // Refresh database info when database is updated
-                    loadDatabaseInfo()
+                    // Refresh shoot count when database is updated
                     shootCount = dataManager.shoots.count
                 }
             }
@@ -770,33 +767,6 @@ struct AccountDetailsView: View {
         }
     }
     
-    private func loadDatabaseInfo() {
-        // Get database info from SQLiteService
-        let sqliteService = SQLiteService()
-        
-        // Get database file modification date from the actual database location
-        let databaseURL = sqliteService.databaseURL
-        do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
-            databaseLastUpdated = attributes[FileAttributeKey.modificationDate] as? Date
-        } catch {
-            print("Error getting database file attributes: \(error)")
-            databaseLastUpdated = nil
-        }
-        
-        // Get shoot count from DataManager
-        shootCount = dataManager.shoots.count
-        
-        // If no shoots loaded yet, try to get from database directly
-        if shootCount == 0 {
-            Task {
-                let shoots = sqliteService.loadShoots()
-                await MainActor.run {
-                    shootCount = shoots.count
-                }
-            }
-        }
-    }
     
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
