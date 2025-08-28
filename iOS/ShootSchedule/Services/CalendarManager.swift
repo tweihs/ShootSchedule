@@ -63,7 +63,7 @@ class CalendarManager: ObservableObject {
         // Try to find existing calendar
         if let existingCalendar = findShootScheduleCalendar() {
             shootScheduleCalendar = existingCalendar
-            print("📅 Found existing ShootSchedule calendar")
+            DebugLogger.calendar("Found existing ShootSchedule calendar")
             return
         }
         
@@ -84,7 +84,7 @@ class CalendarManager: ObservableObject {
             // Store calendar identifier for future use
             UserDefaults.standard.set(calendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
             
-            print("📅 Created ShootSchedule calendar successfully")
+            DebugLogger.calendar("Created ShootSchedule calendar successfully")
         } catch {
             print("❌ Failed to create calendar: \(error)")
         }
@@ -143,7 +143,7 @@ class CalendarManager: ObservableObject {
         if let event = await findEventForShoot(shoot) {
             do {
                 try eventStore.remove(event, span: .thisEvent)
-                print("📅 Removed shoot event: \(shoot.shootName)")
+                DebugLogger.calendar("Removed shoot event: \(shoot.shootName)")
             } catch {
                 print("❌ Failed to remove event: \(error)")
             }
@@ -180,7 +180,7 @@ class CalendarManager: ObservableObject {
         
         do {
             try eventStore.save(event, span: .thisEvent)
-            print("📅 Created calendar event for: \(shoot.shootName)")
+            DebugLogger.calendar("Created calendar event for: \(shoot.shootName)")
         } catch {
             print("❌ Failed to create event: \(error)")
         }
@@ -192,7 +192,7 @@ class CalendarManager: ObservableObject {
         
         do {
             try eventStore.save(event, span: .thisEvent)
-            print("📅 Updated calendar event for: \(shoot.shootName)")
+            DebugLogger.calendar("Updated calendar event for: \(shoot.shootName)")
         } catch {
             print("❌ Failed to update event: \(error)")
         }
@@ -294,6 +294,6 @@ class CalendarManager: ObservableObject {
             }
         }
         
-        print("📅 Removed \(events.count) shoot events from calendar")
+        DebugLogger.calendar("Removed \(events.count) shoot events from calendar")
     }
 }

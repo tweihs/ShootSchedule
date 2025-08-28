@@ -94,40 +94,58 @@ def upload_to_firebase(file_path, bucket_name=None, credentials_path=None, blob_
     # Initialize Firebase Admin SDK if not already initialized
     if not firebase_admin._apps:
         try:
-            # Use provided credentials path, check common locations, or use environment variable
-            if not credentials_path:
-                # Check for serviceAccountKey.json in common locations
-                possible_paths = [
-                    "serviceAccountKey.json",  # Current directory
-                    "../serviceAccountKey.json",  # Parent directory
-                    "../../serviceAccountKey.json",  # Two directories up (project root from python/src)
-                    os.path.expanduser("~/serviceAccountKey.json"),  # Home directory
-                ]
-                
-                for path in possible_paths:
-                    if os.path.exists(path):
-                        credentials_path = path
-                        print(f"🔍 Found credentials at: {path}")
-                        break
-                
-                # Fall back to environment variable
+            cred = None
+            
+            # First check if FIREBASE_CREDENTIALS environment variable contains JSON
+            firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS')
+            if firebase_creds_json:
+                try:
+                    print("🔑 Using credentials from FIREBASE_CREDENTIALS environment variable")
+                    cred_dict = json.loads(firebase_creds_json)
+                    cred = credentials.Certificate(cred_dict)
+                except json.JSONDecodeError as e:
+                    print(f"⚠️ Warning: Failed to parse FIREBASE_CREDENTIALS JSON: {e}")
+                    firebase_creds_json = None
+            
+            # If no environment variable, look for file
+            if not cred:
+                # Use provided credentials path, check common locations, or use environment variable
                 if not credentials_path:
-                    credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+                    # Check for serviceAccountKey.json in common locations
+                    possible_paths = [
+                        "serviceAccountKey.json",  # Current directory
+                        "../serviceAccountKey.json",  # Parent directory
+                        "../../serviceAccountKey.json",  # Two directories up (project root from python/src)
+                        os.path.expanduser("~/serviceAccountKey.json"),  # Home directory
+                    ]
+                    
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            credentials_path = path
+                            print(f"🔍 Found credentials at: {path}")
+                            break
+                    
+                    # Fall back to GOOGLE_APPLICATION_CREDENTIALS environment variable
+                    if not credentials_path:
+                        credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+                
+                if not credentials_path:
+                    print("❌ Error: No credentials found")
+                    print("   Checked for: FIREBASE_CREDENTIALS environment variable (JSON content)")
+                    print("   Checked for: serviceAccountKey.json in current, parent, and project root")
+                    print("   Checked for: GOOGLE_APPLICATION_CREDENTIALS environment variable (file path)")
+                    print("   Or use --credentials flag")
+                    return None
+                
+                if not os.path.exists(credentials_path):
+                    print(f"❌ Error: Credentials file not found: {credentials_path}")
+                    return None
+                
+                # Firebase recommended initialization
+                print(f"🔑 Loading credentials from: {credentials_path}")
+                cred = credentials.Certificate(credentials_path)
             
-            if not credentials_path:
-                print("❌ Error: No credentials found")
-                print("   Checked: serviceAccountKey.json in current, parent, and project root")
-                print("   Set GOOGLE_APPLICATION_CREDENTIALS environment variable")
-                print("   Or use --credentials flag")
-                return None
-            
-            if not os.path.exists(credentials_path):
-                print(f"❌ Error: Credentials file not found: {credentials_path}")
-                return None
-            
-            # Firebase recommended initialization
-            print(f"🔑 Loading credentials from: {credentials_path}")
-            cred = credentials.Certificate(credentials_path)
+            # Initialize Firebase app with credentials
             firebase_admin.initialize_app(cred, {
                 'storageBucket': bucket_name
             })
@@ -176,6 +194,21 @@ def upload_to_firebase(file_path, bucket_name=None, credentials_path=None, blob_
         print(f"✅ Upload successful!")
         print(f"🌐 Public URL: {public_url}")
         print(f"📱 Direct download: https://storage.googleapis.com/{bucket_name}/{blob_name}")
+        
+        # Debug: Check the Last-Modified header from Firebase Storage
+        import requests
+        try:
+            print("\n📍 Verifying upload headers...")
+            response = requests.head(public_url, timeout=5)
+            if 'Last-Modified' in response.headers:
+                print(f"📅 Server Last-Modified: {response.headers['Last-Modified']}")
+            else:
+                print("⚠️ Warning: No Last-Modified header in response")
+            if 'ETag' in response.headers:
+                print(f"🏷️ Server ETag: {response.headers['ETag']}")
+            print(f"📊 Content-Length: {response.headers.get('Content-Length', 'Unknown')} bytes")
+        except Exception as e:
+            print(f"⚠️ Could not verify upload headers: {e}")
         
         # Save upload info to local file for reference
         upload_info = {

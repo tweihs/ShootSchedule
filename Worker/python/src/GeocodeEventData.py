@@ -26,22 +26,34 @@ def load_cached_locations(filename):
 
 def geocode_addresses(dataframe, api_key, cached_locations):
     print("Geocoding addresses")
-    geolocator = GoogleV3(api_key=api_key)
+    # Increase timeout to 10 seconds for slow connections
+    geolocator = GoogleV3(api_key=api_key, timeout=10)
     location_dict = cached_locations.copy()
 
     # Create the 'full_address' column
     dataframe['full_address'] = dataframe.apply(create_full_address, axis=1)
     unique_addresses = dataframe['full_address'].unique()
+    
+    # Count how many need geocoding
+    uncached_count = sum(1 for addr in unique_addresses if addr not in location_dict)
+    print(f"  Found {len(unique_addresses)} unique addresses")
+    print(f"  Already cached: {len(unique_addresses) - uncached_count}")
+    print(f"  Need geocoding: {uncached_count}")
 
-    for address in unique_addresses:
+    for i, address in enumerate(unique_addresses):
         if address not in location_dict:
-            location = geolocator.geocode(address)
-            if location:
-                location_dict[address] = (location.latitude, location.longitude)
-                # print("Location lookup for {}".format(address))
-            else:
+            try:
+                location = geolocator.geocode(address)
+                if location:
+                    location_dict[address] = (location.latitude, location.longitude)
+                    if (i + 1) % 10 == 0:  # Print progress every 10 addresses
+                        print(f"  Geocoded {i + 1}/{uncached_count} new addresses...")
+                else:
+                    location_dict[address] = (None, None)
+                    print(f"  No results for: {address[:50]}...")
+            except Exception as e:
                 location_dict[address] = (None, None)
-                print(f"Geocoding error for address: {address}")
+                print(f"  Geocoding failed for {address[:50]}...: {str(e)[:50]}")
         # else:
         #     print("Location cached for address: {}".format(address))
 

@@ -10,6 +10,14 @@ import Combine
 import EventKit
 import UIKit
 
+// Temporary DebugLogger until added to project
+struct DebugLogger {
+    static func calendar(_ message: String) {
+        // Calendar logging is disabled
+        // print("📅 \(message)")
+    }
+}
+
 class DataManager: ObservableObject {
     @Published var shoots: [Shoot] = []
     @Published var isLoading = false
@@ -56,10 +64,16 @@ class DataManager: ObservableObject {
         checkCalendarPermission()
         loadCalendarSyncPreference()
         
-        // Fetch user preferences from server on initial authentication
+        // Check for database updates on app launch
         Task {
-            // Small delay to ensure shoots are loaded first
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            print("🚀 App launched - checking for database updates...")
+            print("📊 Current shoots count before update: \(shoots.count)")
+            
+            await fetchShoots()
+            
+            print("📊 Shoots count after update check: \(shoots.count)")
+            
+            // After database check, fetch user preferences
             await fetchAndApplyUserPreferences()
         }
         
@@ -72,10 +86,10 @@ class DataManager: ObservableObject {
         // Use background queue to avoid blocking UI
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.0) {
             if self.hasCalendarPermission {
-                print("📅 🔍 DELAYED STARTUP DEBUG:")
+                DebugLogger.calendar("🔍 DELAYED STARTUP DEBUG:")
                 self.debugAvailableCalendars()
             } else {
-                print("📅 🔍 DELAYED STARTUP: No calendar permission available")
+                DebugLogger.calendar("🔍 DELAYED STARTUP: No calendar permission available")
             }
         }
     }
@@ -96,12 +110,20 @@ class DataManager: ObservableObject {
     
     /// Force check for database updates (useful for testing and manual refresh)
     func checkForDatabaseUpdates() async {
-        print("\n🔍 Manual database update check requested")
+        print("\n🔍 Database update check requested (manual or foreground)")
+        print("📊 Shoots count before check: \(shoots.count)")
+        print("🕐 Time: \(Date())")
+        
         await fetchShoots()
+        
+        print("📊 Shoots count after check: \(shoots.count)")
+        print("🕐 Time: \(Date())")
     }
     
     func fetchShoots() async {
-        isLoading = true
+        await MainActor.run {
+            isLoading = true
+        }
         
         print("\n🔄 Starting database update check...")
         print("📍 Database URL: \(databaseURL)")
@@ -111,21 +133,34 @@ class DataManager: ObservableObject {
         
         if success {
             print("✅ Database was updated, reloading shoots...")
-            loadShootsFromDatabase()
-            
-            // Re-apply marked status after loading new data
-            applyMarkedStatus()
+            await MainActor.run {
+                // Clear existing shoots to force UI refresh
+                self.shoots = []
+                
+                // Load fresh data from updated database
+                loadShootsFromDatabase()
+                
+                // Re-apply marked status after loading new data
+                applyMarkedStatus()
+                
+                // Force UI update
+                self.objectWillChange.send()
+            }
             
             print("📊 Loaded \(shoots.count) shoots from updated database")
         } else {
             print("ℹ️ Database is current or update skipped")
             // Still ensure we have data loaded
-            if shoots.isEmpty {
-                loadShootsFromDatabase()
+            await MainActor.run {
+                if shoots.isEmpty {
+                    loadShootsFromDatabase()
+                }
             }
         }
         
-        isLoading = false
+        await MainActor.run {
+            isLoading = false
+        }
     }
     
     private func loadShootsFromDatabase() {
@@ -534,22 +569,22 @@ class DataManager: ObservableObject {
             let status = EKEventStore.authorizationStatus(for: .event)
             // Since we're requesting full access, require fullAccess status
             hasCalendarPermission = (status == .fullAccess)
-            print("📅 Calendar permission check (iOS 17+): status=\(status.rawValue), hasPermission=\(hasCalendarPermission)")
+            DebugLogger.calendar("Calendar permission check (iOS 17+): status=\(status.rawValue), hasPermission=\(hasCalendarPermission)")
         } else {
             let status = EKEventStore.authorizationStatus(for: .event)
             hasCalendarPermission = (status == .authorized)
-            print("📅 Calendar permission check: status=\(status.rawValue), hasPermission=\(hasCalendarPermission)")
+            DebugLogger.calendar("Calendar permission check: status=\(status.rawValue), hasPermission=\(hasCalendarPermission)")
         }
         
         // If permission was revoked, automatically disable sync
         if previousPermission && !hasCalendarPermission && isCalendarSyncEnabled {
-            print("📅 Calendar permission was revoked, disabling sync")
+            DebugLogger.calendar("Calendar permission was revoked, disabling sync")
             setCalendarSyncEnabled(false)
         }
         
         // If permission was granted (from Settings), automatically enable sync
         if !previousPermission && hasCalendarPermission && !isCalendarSyncEnabled {
-            print("📅 Calendar permission was granted, auto-enabling sync")
+            DebugLogger.calendar("Calendar permission was granted, auto-enabling sync")
             
             // Debug: Show available calendars now that we have permission
             debugAvailableCalendars()
@@ -574,7 +609,7 @@ class DataManager: ObservableObject {
     
     func debugAvailableCalendars() {
         guard hasCalendarPermission else {
-            print("📅 🔍 CALENDAR DEBUG: No permission to access calendars")
+            DebugLogger.calendar("🔍 CALENDAR DEBUG: No permission to access calendars")
             return
         }
         
@@ -582,20 +617,20 @@ class DataManager: ObservableObject {
         let writableCalendars = allCalendars.filter { $0.allowsContentModifications && !$0.isImmutable }
         let sources = eventStore.sources
         
-        print("📅 🔍 STARTUP CALENDAR DEBUG:")
-        print("📅 Permission status: \(hasCalendarPermission)")
-        print("📅 Total sources: \(sources.count)")
-        print("📅 Total calendars: \(allCalendars.count)")
-        print("📅 Writable calendars: \(writableCalendars.count)")
+        DebugLogger.calendar("🔍 STARTUP CALENDAR DEBUG:")
+        DebugLogger.calendar("Permission status: \(hasCalendarPermission)")
+        DebugLogger.calendar("Total sources: \(sources.count)")
+        DebugLogger.calendar("Total calendars: \(allCalendars.count)")
+        DebugLogger.calendar("Writable calendars: \(writableCalendars.count)")
         
-        print("📅 📋 SOURCES:")
+        DebugLogger.calendar("📋 SOURCES:")
         for source in sources {
             let sourceTypeDesc = getSourceTypeDescription(source.sourceType)
             let calendarsInSource = allCalendars.filter { $0.source == source }
-            print("📅   • \(source.title) (\(sourceTypeDesc)) - \(calendarsInSource.count) calendars - ID: \(source.sourceIdentifier)")
+            DebugLogger.calendar("  • \(source.title) (\(sourceTypeDesc)) - \(calendarsInSource.count) calendars - ID: \(source.sourceIdentifier)")
         }
         
-        print("📅 📋 ALL CALENDARS:")
+        DebugLogger.calendar("📋 ALL CALENDARS:")
         for calendar in allCalendars {
             let writable = calendar.allowsContentModifications && !calendar.isImmutable
             let sourceName = calendar.source?.title ?? "Unknown"
@@ -607,36 +642,36 @@ class DataManager: ObservableObject {
             let marker = writable ? "✅" : "❌"
             let personalMarker = hasPersonalName ? "👤" : "  "
             let domainMarker = hasDomain ? "🌐" : "  "
-            print("📅   \(marker)\(personalMarker)\(domainMarker) '\(calendar.title)' - Source: \(sourceName) (type:\(sourceType)/\(sourceTypeDesc))")
-            print("📅     - ID: \(calendar.calendarIdentifier)")
-            print("📅     - Allows modifications: \(calendar.allowsContentModifications)")
-            print("📅     - Is immutable: \(calendar.isImmutable)")
+            DebugLogger.calendar("   \(marker)\(personalMarker)\(domainMarker) '\(calendar.title)' - Source: \(sourceName) (type:\(sourceType)/\(sourceTypeDesc))")
+            DebugLogger.calendar("     - ID: \(calendar.calendarIdentifier)")
+            DebugLogger.calendar("     - Allows modifications: \(calendar.allowsContentModifications)")
+            DebugLogger.calendar("     - Is immutable: \(calendar.isImmutable)")
             if hasPersonalName {
-                print("📅     - 👤 Contains personal name (highest priority)")
+                DebugLogger.calendar("     - 👤 Contains personal name (highest priority)")
             }
             if hasDomain {
-                print("📅     - 🌐 Contains domain name (high priority)")
+                DebugLogger.calendar("     - 🌐 Contains domain name (high priority)")
             }
         }
         
         if let currentCalendar = shootScheduleCalendar {
-            print("📅 📌 CURRENTLY SELECTED: '\(currentCalendar.title)' in \(currentCalendar.source?.title ?? "Unknown")")
+            DebugLogger.calendar(" 📌 CURRENTLY SELECTED: '\(currentCalendar.title)' in \(currentCalendar.source?.title ?? "Unknown")")
         } else {
-            print("📅 📌 NO CALENDAR CURRENTLY SELECTED")
+            DebugLogger.calendar(" 📌 NO CALENDAR CURRENTLY SELECTED")
         }
     }
     
     func requestCalendarPermission() async -> Bool {
-        print("📅 Requesting full calendar permission...")
+        DebugLogger.calendar(" Requesting full calendar permission...")
         // Always request full access to read existing calendars and write to them
         // This is necessary for CalDAV sources (Google Calendar, etc.) that don't allow
         // creating new calendars but do allow writing to existing ones
         let granted: Bool
         do {
             granted = try await eventStore.requestAccess(to: .event)
-            print("📅 Calendar permission result (full access): \(granted)")
+            DebugLogger.calendar(" Calendar permission result (full access): \(granted)")
         } catch {
-            print("📅 Calendar permission error: \(error)")
+            DebugLogger.calendar(" Calendar permission error: \(error)")
             granted = false
         }
         
@@ -647,7 +682,7 @@ class DataManager: ObservableObject {
             UserDefaults.standard.synchronize()
             
             if granted {
-                print("📅 Permission granted, auto-enabling sync and setting up calendar...")
+                DebugLogger.calendar(" Permission granted, auto-enabling sync and setting up calendar...")
                 // Auto-enable sync when permission is granted
                 setCalendarSyncEnabled(true)
                 
@@ -656,13 +691,13 @@ class DataManager: ObservableObject {
                     
                     // Sync existing marked shoots after calendar is set up
                     let markedShoots = shoots.filter { $0.isMarked }
-                    print("📅 Found \(markedShoots.count) marked shoots to sync: \(markedShoots.map { "\($0.id): \($0.shootName)" })")
+                    DebugLogger.calendar(" Found \(markedShoots.count) marked shoots to sync: \(markedShoots.map { "\($0.id): \($0.shootName)" })")
                     
                     if !markedShoots.isEmpty {
                         await syncAllMarkedShoots(markedShoots)
-                        print("📅 Completed syncing \(markedShoots.count) marked shoots")
+                        DebugLogger.calendar(" Completed syncing \(markedShoots.count) marked shoots")
                     } else {
-                        print("📅 No marked shoots to sync")
+                        DebugLogger.calendar(" No marked shoots to sync")
                     }
                 }
             }
@@ -675,7 +710,7 @@ class DataManager: ObservableObject {
     }
     
     func setCalendarSyncEnabled(_ enabled: Bool) {
-        print("📅 Setting calendar sync enabled: \(enabled), hasPermission: \(hasCalendarPermission)")
+        DebugLogger.calendar(" Setting calendar sync enabled: \(enabled), hasPermission: \(hasCalendarPermission)")
         isCalendarSyncEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: "calendarSyncEnabled")
         UserDefaults.standard.synchronize()
@@ -684,12 +719,12 @@ class DataManager: ObservableObject {
         syncPreferencesIfAuthenticated()
         
         if enabled && hasCalendarPermission {
-            print("📅 📝 Calendar sync ENABLED - will set up calendar")
+            DebugLogger.calendar(" 📝 Calendar sync ENABLED - will set up calendar")
             Task {
                 await setupShootScheduleCalendar()
             }
         } else if !enabled {
-            print("📅 🗑️ Calendar sync DISABLED - calendar and events will be removed via removeAllShootEvents()")
+            DebugLogger.calendar(" 🗑️ Calendar sync DISABLED - calendar and events will be removed via removeAllShootEvents()")
         }
     }
     
@@ -700,7 +735,7 @@ class DataManager: ObservableObject {
         // Try to find existing calendar
         if let existingCalendar = findShootScheduleCalendar() {
             shootScheduleCalendar = existingCalendar
-            print("📅 Found existing ShootSchedule calendar")
+            DebugLogger.calendar(" Found existing ShootSchedule calendar")
             return
         }
         
@@ -712,12 +747,12 @@ class DataManager: ObservableObject {
         let allSources = getSortedCalendarSources()
         let availableSources = getAvailableCalendarSources()
         
-        print("📅 All sources: \(allSources.count), Available sources: \(availableSources.count)")
+        DebugLogger.calendar(" All sources: \(allSources.count), Available sources: \(availableSources.count)")
         
         // If user has already selected a preferred source, use it
         if let savedSourceId = UserDefaults.standard.string(forKey: "preferredCalendarSourceId"),
            let preferredSource = allSources.first(where: { $0.sourceIdentifier == savedSourceId }) {
-            print("📅 Using previously selected calendar source: \(preferredSource.title)")
+            DebugLogger.calendar(" Using previously selected calendar source: \(preferredSource.title)")
             await createCalendar(in: preferredSource)
             return
         }
@@ -726,8 +761,8 @@ class DataManager: ObservableObject {
         let allCalendars = eventStore.calendars(for: .event)
         let writableCalendars = allCalendars.filter { $0.allowsContentModifications && !$0.isImmutable }
         
-        print("📅 🔍 CALENDAR SETUP DEBUG:")
-        print("📅 Found \(allCalendars.count) total calendars, \(writableCalendars.count) writable")
+        DebugLogger.calendar(" 🔍 CALENDAR SETUP DEBUG:")
+        DebugLogger.calendar(" Found \(allCalendars.count) total calendars, \(writableCalendars.count) writable")
         
         // Log detailed calendar information
         for calendar in allCalendars {
@@ -737,28 +772,28 @@ class DataManager: ObservableObject {
             let sourceTypeDesc = getSourceTypeDescription(calendar.source?.sourceType ?? .local)
             
             let marker = writable ? "✅" : "❌"
-            print("📅   \(marker) '\(calendar.title)' - Source: \(sourceName) (type:\(sourceType)/\(sourceTypeDesc)) - ID: \(calendar.calendarIdentifier)")
+            DebugLogger.calendar("   \(marker) '\(calendar.title)' - Source: \(sourceName) (type:\(sourceType)/\(sourceTypeDesc)) - ID: \(calendar.calendarIdentifier)")
         }
         
         // If we have multiple calendar options, offer user selection
         if allCalendars.count > 1 {
-            print("📅 Multiple calendars available, user selection needed")
+            DebugLogger.calendar(" Multiple calendars available, user selection needed")
             UserDefaults.standard.set(true, forKey: "needsCalendarSourceSelection")
             
             // Try to use the best available calendar as a default
             if let bestCalendar = writableCalendars.first {
-                print("📅 Using best available writable calendar as default: \(bestCalendar.title)")
+                DebugLogger.calendar(" Using best available writable calendar as default: \(bestCalendar.title)")
                 shootScheduleCalendar = bestCalendar
                 UserDefaults.standard.set(bestCalendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
             }
         }
         // Only one calendar available, use it
         else if let onlyCalendar = allCalendars.first {
-            print("📅 Only one calendar available, using: \(onlyCalendar.title)")
+            DebugLogger.calendar(" Only one calendar available, using: \(onlyCalendar.title)")
             shootScheduleCalendar = onlyCalendar
             UserDefaults.standard.set(onlyCalendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
         } else {
-            print("📅 ❌ No calendars found at all")
+            DebugLogger.calendar(" ❌ No calendars found at all")
         }
     }
     
@@ -776,7 +811,7 @@ class DataManager: ObservableObject {
             let calendarsInSource = eventStore.calendars(for: .event).filter { $0.source == source }
             let writableCalendars = calendarsInSource.filter { !$0.isImmutable }
             
-            print("📅 Source '\(source.title)' has \(calendarsInSource.count) calendars, \(writableCalendars.count) writable")
+            DebugLogger.calendar(" Source '\(source.title)' has \(calendarsInSource.count) calendars, \(writableCalendars.count) writable")
             
             // If source has writable calendars, it might allow calendar creation
             return !writableCalendars.isEmpty
@@ -784,7 +819,7 @@ class DataManager: ObservableObject {
     }
     
     private func createCalendar(in source: EKSource) async {
-        print("📅 Creating calendar in source: \(source.title) (type: \(source.sourceType.rawValue))")
+        DebugLogger.calendar(" Creating calendar in source: \(source.title) (type: \(source.sourceType.rawValue))")
         
         let calendar = EKCalendar(for: .event, eventStore: eventStore)
         calendar.title = calendarTitle
@@ -800,14 +835,14 @@ class DataManager: ObservableObject {
             UserDefaults.standard.set(calendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
             UserDefaults.standard.set(source.sourceIdentifier, forKey: "preferredCalendarSourceId")
             
-            print("📅 ✅ Created ShootSchedule calendar successfully with ID: \(calendar.calendarIdentifier)")
-            print("📅 ✅ Calendar source: \(source.title) (type: \(source.sourceType.rawValue))")
+            DebugLogger.calendar(" ✅ Created ShootSchedule calendar successfully with ID: \(calendar.calendarIdentifier)")
+            DebugLogger.calendar(" ✅ Calendar source: \(source.title) (type: \(source.sourceType.rawValue))")
             
         } catch let error as NSError {
-            print("📅 ❌ Failed to create calendar in source '\(source.title)': \(error.localizedDescription)")
+            DebugLogger.calendar(" ❌ Failed to create calendar in source '\(source.title)': \(error.localizedDescription)")
             
             if error.domain == "EKErrorDomain" && error.code == 17 {
-                print("📅 Source '\(source.title)' doesn't allow calendar creation, trying fallback approach...")
+                DebugLogger.calendar(" Source '\(source.title)' doesn't allow calendar creation, trying fallback approach...")
                 
                 // Fallback: Try to use an existing writable calendar in this source
                 await tryUseExistingCalendar(in: source)
@@ -827,12 +862,12 @@ class DataManager: ObservableObject {
         let calendarsInSource = eventStore.calendars(for: .event).filter { $0.source == source }
         let writableCalendars = calendarsInSource.filter { !$0.isImmutable && $0.allowsContentModifications }
         
-        print("📅 Looking for existing writable calendars in '\(source.title)': found \(writableCalendars.count)")
+        DebugLogger.calendar(" Looking for existing writable calendars in '\(source.title)': found \(writableCalendars.count)")
         
         // Try to find a suitable existing calendar
         if let suitableCalendar = writableCalendars.first(where: { $0.title.lowercased().contains("personal") || $0.title.lowercased().contains("default") }) ?? writableCalendars.first {
             
-            print("📅 Using existing calendar: '\(suitableCalendar.title)' as fallback")
+            DebugLogger.calendar(" Using existing calendar: '\(suitableCalendar.title)' as fallback")
             
             // Create a dedicated calendar within this source if possible, otherwise use the existing one directly
             let dedicatedCalendar = EKCalendar(for: .event, eventStore: eventStore)
@@ -844,19 +879,19 @@ class DataManager: ObservableObject {
                 try eventStore.saveCalendar(dedicatedCalendar, commit: true)
                 shootScheduleCalendar = dedicatedCalendar
                 UserDefaults.standard.set(dedicatedCalendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
-                print("📅 ✅ Created dedicated calendar in existing source successfully")
+                DebugLogger.calendar(" ✅ Created dedicated calendar in existing source successfully")
             } catch {
                 // If we still can't create a dedicated calendar, we'll need to use a different approach
-                print("📅 Still can't create dedicated calendar, source is too restrictive")
+                DebugLogger.calendar(" Still can't create dedicated calendar, source is too restrictive")
             }
         } else {
-            print("📅 No suitable writable calendars found in source '\(source.title)'")
+            DebugLogger.calendar(" No suitable writable calendars found in source '\(source.title)'")
         }
     }
     
     private func getSortedCalendarSources() -> [EKSource] {
         let sources = eventStore.sources
-        print("📅 Available calendar sources: \(sources.map { "\($0.title): \($0.sourceType.rawValue)" })")
+        DebugLogger.calendar(" Available calendar sources: \(sources.map { "\($0.title): \($0.sourceType.rawValue)" })")
         
         // Sort sources by preference: Local > CalDAV > iCloud > Exchange > Others
         return sources.sorted { source1, source2 in
@@ -887,9 +922,9 @@ class DataManager: ObservableObject {
             calendar.allowsContentModifications && !calendar.isImmutable
         }
         
-        print("📅 🔍 CALENDAR SELECTION DEBUG:")
-        print("📅 Total calendars found: \(allCalendars.count)")
-        print("📅 Writable calendars (shown to user): \(writableCalendars.count)")
+        DebugLogger.calendar(" 🔍 CALENDAR SELECTION DEBUG:")
+        DebugLogger.calendar(" Total calendars found: \(allCalendars.count)")
+        DebugLogger.calendar(" Writable calendars (shown to user): \(writableCalendars.count)")
         
         // Log all calendars for debugging, but mark which ones are filtered out
         for calendar in allCalendars {
@@ -905,7 +940,7 @@ class DataManager: ObservableObject {
             let personalMarker = hasPersonalName ? "👤" : "  "
             let domainMarker = hasDomain ? "🌐" : "  "
             
-            print("📅   \(status)\(personalMarker)\(domainMarker) '\(calendar.title)' - Source: \(sourceName) (type:\(sourceType)/\(sourceTypeDesc))")
+            DebugLogger.calendar("   \(status)\(personalMarker)\(domainMarker) '\(calendar.title)' - Source: \(sourceName) (type:\(sourceType)/\(sourceTypeDesc))")
         }
         
         // Sort writable calendars: personal names first, domain names next, then by source priority, then by name
@@ -979,11 +1014,11 @@ class DataManager: ObservableObject {
             let hasNamePattern = !regex.matches(in: cleanTitle, options: [], range: range).isEmpty
             
             if hasNamePattern {
-                print("📅 👤 Found personal name in calendar title: '\(title)' -> '\(cleanTitle)'")
+                DebugLogger.calendar(" 👤 Found personal name in calendar title: '\(title)' -> '\(cleanTitle)'")
                 return true
             }
         } catch {
-            print("📅 ❌ Regex error in hasPersonalNameInTitle: \(error)")
+            DebugLogger.calendar(" ❌ Regex error in hasPersonalNameInTitle: \(error)")
         }
         
         // Fallback: Check for common name indicators
@@ -1000,7 +1035,7 @@ class DataManager: ObservableObject {
         }
         
         if hasPersonalName {
-            print("📅 👤 Found personal name in calendar title (fallback): '\(title)' -> '\(cleanTitle)'")
+            DebugLogger.calendar(" 👤 Found personal name in calendar title (fallback): '\(title)' -> '\(cleanTitle)'")
         }
         
         return hasPersonalName
@@ -1018,11 +1053,11 @@ class DataManager: ObservableObject {
             
             let hasDomain = !matches.isEmpty
             if hasDomain {
-                print("📅 🔍 Found domain in calendar title: '\(title)'")
+                DebugLogger.calendar(" 🔍 Found domain in calendar title: '\(title)'")
             }
             return hasDomain
         } catch {
-            print("📅 ❌ Regex error in hasDomainInTitle: \(error)")
+            DebugLogger.calendar(" ❌ Regex error in hasDomainInTitle: \(error)")
             // Fallback: simple check for common patterns
             return title.contains(".com") || title.contains(".org") || title.contains(".net") || 
                    title.contains(".edu") || title.contains(".gov") || title.contains(".co")
@@ -1041,22 +1076,22 @@ class DataManager: ObservableObject {
         // sourceId is now a calendar identifier, not a source identifier
         let allCalendars = eventStore.calendars(for: .event)
         guard let selectedCalendar = allCalendars.first(where: { $0.calendarIdentifier == sourceId }) else {
-            print("📅 ❌ Selected calendar not found: \(sourceId)")
+            DebugLogger.calendar(" ❌ Selected calendar not found: \(sourceId)")
             return false
         }
         
-        print("📅 User selected calendar: \(selectedCalendar.title) in source: \(selectedCalendar.source?.title ?? "Unknown")")
+        DebugLogger.calendar(" User selected calendar: \(selectedCalendar.title) in source: \(selectedCalendar.source?.title ?? "Unknown")")
         
         // Check if the selected calendar is writable
         let isWritable = selectedCalendar.allowsContentModifications && !selectedCalendar.isImmutable
         
         if !isWritable {
-            print("📅 ⚠️ Selected calendar is read-only, this may not work for event creation")
+            DebugLogger.calendar(" ⚠️ Selected calendar is read-only, this may not work for event creation")
         }
         
         // Remove existing ShootSchedule calendar if it exists (tear down old calendar)
         if shootScheduleCalendar != nil {
-            print("📅 🗑️ Tearing down existing ShootSchedule calendar before switching")
+            DebugLogger.calendar(" 🗑️ Tearing down existing ShootSchedule calendar before switching")
             await removeShootScheduleCalendar()
         }
         
@@ -1067,7 +1102,7 @@ class DataManager: ObservableObject {
         UserDefaults.standard.set(selectedCalendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
         UserDefaults.standard.set(selectedCalendar.source?.sourceIdentifier, forKey: "preferredCalendarSourceId")
         
-        print("📅 ✅ Using existing calendar: \(selectedCalendar.title)")
+        DebugLogger.calendar(" ✅ Using existing calendar: \(selectedCalendar.title)")
         
         // Clear the need for selection flag
         UserDefaults.standard.removeObject(forKey: "needsCalendarSourceSelection")
@@ -1083,12 +1118,12 @@ class DataManager: ObservableObject {
     
     func detectAndLogDuplicateEvents() async {
         guard let calendar = shootScheduleCalendar else {
-            print("📅 🔍 DUPLICATE CHECK: No calendar selected")
+            DebugLogger.calendar(" 🔍 DUPLICATE CHECK: No calendar selected")
             return
         }
         
-        print("📅 🔍 DUPLICATE EVENT DETECTION:")
-        print("📅 Checking calendar: '\(calendar.title)'")
+        DebugLogger.calendar(" 🔍 DUPLICATE EVENT DETECTION:")
+        DebugLogger.calendar(" Checking calendar: '\(calendar.title)'")
         
         // Get all events in the calendar for a wide date range
         let startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
@@ -1101,7 +1136,7 @@ class DataManager: ObservableObject {
         )
         
         let allEvents = eventStore.events(matching: predicate)
-        print("📅 Total events in calendar: \(allEvents.count)")
+        DebugLogger.calendar(" Total events in calendar: \(allEvents.count)")
         
         // Group events by ShootID (extracted from notes)
         var eventsByShootID: [Int: [EKEvent]] = [:]
@@ -1118,28 +1153,28 @@ class DataManager: ObservableObject {
             }
         }
         
-        print("📅 Events with ShootID: \(eventsByShootID.values.flatMap { $0 }.count)")
-        print("📅 Events without ShootID: \(eventsWithoutShootID.count)")
+        DebugLogger.calendar(" Events with ShootID: \(eventsByShootID.values.flatMap { $0 }.count)")
+        DebugLogger.calendar(" Events without ShootID: \(eventsWithoutShootID.count)")
         
         // Find and log duplicates
         let duplicateGroups = eventsByShootID.filter { $0.value.count > 1 }
         
-        print("📅 🚨 DUPLICATE ANALYSIS:")
-        print("📅 Found \(duplicateGroups.count) shoot(s) with duplicate events")
+        DebugLogger.calendar(" 🚨 DUPLICATE ANALYSIS:")
+        DebugLogger.calendar(" Found \(duplicateGroups.count) shoot(s) with duplicate events")
         
         for (shootID, events) in duplicateGroups {
-            print("📅   🚨 ShootID \(shootID): \(events.count) duplicate events")
+            DebugLogger.calendar("   🚨 ShootID \(shootID): \(events.count) duplicate events")
             for (index, event) in events.enumerated() {
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateStyle = .short
                 dateFormatter.timeStyle = .short
                 
-                print("📅     [\(index + 1)] '\(event.title ?? "No Title")'")
-                print("📅         - Event ID: \(event.eventIdentifier ?? "nil")")
-                print("📅         - Created: \(dateFormatter.string(from: event.creationDate ?? Date()))")
-                print("📅         - Start: \(dateFormatter.string(from: event.startDate))")
-                print("📅         - End: \(dateFormatter.string(from: event.endDate))")
-                print("📅         - All Day: \(event.isAllDay)")
+                DebugLogger.calendar("     [\(index + 1)] '\(event.title ?? "No Title")'")
+                DebugLogger.calendar("         - Event ID: \(event.eventIdentifier ?? "nil")")
+                DebugLogger.calendar("         - Created: \(dateFormatter.string(from: event.creationDate ?? Date()))")
+                DebugLogger.calendar("         - Start: \(dateFormatter.string(from: event.startDate))")
+                DebugLogger.calendar("         - End: \(dateFormatter.string(from: event.endDate))")
+                DebugLogger.calendar("         - All Day: \(event.isAllDay)")
             }
         }
         
@@ -1155,29 +1190,29 @@ class DataManager: ObservableObject {
         
         let titleDuplicates = eventsByTitle.filter { $0.value.count > 1 }
         if !titleDuplicates.isEmpty {
-            print("📅 🔍 TITLE-BASED DUPLICATES (may include legitimate recurring events):")
+            DebugLogger.calendar(" 🔍 TITLE-BASED DUPLICATES (may include legitimate recurring events):")
             for (title, events) in titleDuplicates {
-                print("📅   Title '\(title)': \(events.count) events")
+                DebugLogger.calendar("   Title '\(title)': \(events.count) events")
             }
         }
         
-        print("📅 🔍 DUPLICATE DETECTION COMPLETE")
+        DebugLogger.calendar(" 🔍 DUPLICATE DETECTION COMPLETE")
     }
     
     func deduplicateEvents() async {
         guard let calendar = shootScheduleCalendar else {
-            print("📅 🧹 DEDUPLICATION: No calendar selected")
+            DebugLogger.calendar(" 🧹 DEDUPLICATION: No calendar selected")
             return
         }
         
-        print("📅 🧹 STARTING EVENT DEDUPLICATION:")
-        print("📅 Target calendar: '\(calendar.title)'")
+        DebugLogger.calendar(" 🧹 STARTING EVENT DEDUPLICATION:")
+        DebugLogger.calendar(" Target calendar: '\(calendar.title)'")
         
         // Get all events in the calendar for a very wide date range for comprehensive deduplication
         let startDate = Calendar.current.date(byAdding: .year, value: -3, to: Date()) ?? Date()
         let endDate = Calendar.current.date(byAdding: .year, value: 3, to: Date()) ?? Date()
         
-        print("📅 🧹 DEDUPLICATION DATE RANGE: \(DateFormatter.localizedString(from: startDate, dateStyle: .short, timeStyle: .none)) to \(DateFormatter.localizedString(from: endDate, dateStyle: .short, timeStyle: .none))")
+        DebugLogger.calendar(" 🧹 DEDUPLICATION DATE RANGE: \(DateFormatter.localizedString(from: startDate, dateStyle: .short, timeStyle: .none)) to \(DateFormatter.localizedString(from: endDate, dateStyle: .short, timeStyle: .none))")
         
         let predicate = eventStore.predicateForEvents(
             withStart: startDate,
@@ -1186,7 +1221,7 @@ class DataManager: ObservableObject {
         )
         
         let allEvents = eventStore.events(matching: predicate)
-        print("📅 Total events before deduplication: \(allEvents.count)")
+        DebugLogger.calendar(" Total events before deduplication: \(allEvents.count)")
         
         // Group events by ShootID
         var eventsByShootID: [Int: [EKEvent]] = [:]
@@ -1207,10 +1242,10 @@ class DataManager: ObservableObject {
         let duplicateGroups = eventsByShootID.filter { $0.value.count > 1 }
         var totalRemoved = 0
         
-        print("📅 Found \(duplicateGroups.count) shoot(s) with duplicate events")
+        DebugLogger.calendar(" Found \(duplicateGroups.count) shoot(s) with duplicate events")
         
         for (shootID, events) in duplicateGroups {
-            print("📅   🧹 Processing ShootID \(shootID): \(events.count) duplicate events")
+            DebugLogger.calendar("   🧹 Processing ShootID \(shootID): \(events.count) duplicate events")
             
             // Sort events by creation date (most recent first)
             let sortedEvents = events.sorted { event1, event2 in
@@ -1223,32 +1258,32 @@ class DataManager: ObservableObject {
             let eventToKeep = sortedEvents.first!
             let eventsToRemove = Array(sortedEvents.dropFirst())
             
-            print("📅     ✅ KEEPING: '\(eventToKeep.title ?? "No Title")' (Created: \(eventToKeep.creationDate ?? Date()))")
+            DebugLogger.calendar("     ✅ KEEPING: '\(eventToKeep.title ?? "No Title")' (Created: \(eventToKeep.creationDate ?? Date()))")
             
             // Remove all other events
             for eventToRemove in eventsToRemove {
                 do {
                     try eventStore.remove(eventToRemove, span: .thisEvent)
                     totalRemoved += 1
-                    print("📅     🗑️ REMOVED: '\(eventToRemove.title ?? "No Title")' (Created: \(eventToRemove.creationDate ?? Date()))")
+                    DebugLogger.calendar("     🗑️ REMOVED: '\(eventToRemove.title ?? "No Title")' (Created: \(eventToRemove.creationDate ?? Date()))")
                 } catch {
-                    print("📅     ❌ FAILED TO REMOVE: '\(eventToRemove.title ?? "No Title")' - Error: \(error)")
+                    DebugLogger.calendar("     ❌ FAILED TO REMOVE: '\(eventToRemove.title ?? "No Title")' - Error: \(error)")
                 }
             }
         }
         
         // Final verification
         let finalEvents = eventStore.events(matching: predicate)
-        print("📅 🧹 DEDUPLICATION COMPLETE:")
-        print("📅 Events before: \(allEvents.count)")
-        print("📅 Events removed: \(totalRemoved)")
-        print("📅 Events after: \(finalEvents.count)")
-        print("📅 Expected after: \(allEvents.count - totalRemoved)")
+        DebugLogger.calendar(" 🧹 DEDUPLICATION COMPLETE:")
+        DebugLogger.calendar(" Events before: \(allEvents.count)")
+        DebugLogger.calendar(" Events removed: \(totalRemoved)")
+        DebugLogger.calendar(" Events after: \(finalEvents.count)")
+        DebugLogger.calendar(" Expected after: \(allEvents.count - totalRemoved)")
         
         if finalEvents.count == allEvents.count - totalRemoved {
-            print("📅 ✅ Deduplication successful!")
+            DebugLogger.calendar(" ✅ Deduplication successful!")
         } else {
-            print("📅 ⚠️ Event count mismatch - some removals may have failed")
+            DebugLogger.calendar(" ⚠️ Event count mismatch - some removals may have failed")
         }
     }
     
@@ -1269,7 +1304,7 @@ class DataManager: ObservableObject {
                 }
             }
         } catch {
-            print("📅 ❌ Regex error in extractShootIDFromNotes: \(error)")
+            DebugLogger.calendar(" ❌ Regex error in extractShootIDFromNotes: \(error)")
         }
         
         return nil
@@ -1294,7 +1329,7 @@ class DataManager: ObservableObject {
         }
         
         if shootEvents.count > 1 {
-            print("📅 🧹 Found \(shootEvents.count) duplicate events for ShootID \(shootID)")
+            DebugLogger.calendar(" 🧹 Found \(shootEvents.count) duplicate events for ShootID \(shootID)")
             
             // Sort by creation date (most recent first)
             let sortedEvents = shootEvents.sorted { event1, event2 in
@@ -1308,9 +1343,9 @@ class DataManager: ObservableObject {
             for eventToRemove in eventsToRemove {
                 do {
                     try eventStore.remove(eventToRemove, span: .thisEvent)
-                    print("📅 🗑️ REMOVED duplicate: '\(eventToRemove.title ?? "No Title")'")
+                    DebugLogger.calendar(" 🗑️ REMOVED duplicate: '\(eventToRemove.title ?? "No Title")'")
                 } catch {
-                    print("📅 ❌ Failed to remove duplicate: \(error)")
+                    DebugLogger.calendar(" ❌ Failed to remove duplicate: \(error)")
                 }
             }
         }
@@ -1334,13 +1369,13 @@ class DataManager: ObservableObject {
             extractShootIDFromNotes(event.notes) == shootID
         }
         
-        print("📅 🗑️ Removing \(shootEvents.count) events for ShootID \(shootID)")
+        DebugLogger.calendar(" 🗑️ Removing \(shootEvents.count) events for ShootID \(shootID)")
         for event in shootEvents {
             do {
                 try eventStore.remove(event, span: .thisEvent)
-                print("📅 🗑️ REMOVED: '\(event.title ?? "No Title")'")
+                DebugLogger.calendar(" 🗑️ REMOVED: '\(event.title ?? "No Title")'")
             } catch {
-                print("📅 ❌ Failed to remove event: \(error)")
+                DebugLogger.calendar(" ❌ Failed to remove event: \(error)")
             }
         }
     }
@@ -1370,15 +1405,15 @@ class DataManager: ObservableObject {
     
     private func syncMarkedShoot(_ shoot: Shoot) async {
         guard isCalendarSyncEnabled, hasCalendarPermission else { 
-            print("📅 Skipping sync - syncEnabled: \(isCalendarSyncEnabled), hasPermission: \(hasCalendarPermission)")
+            DebugLogger.calendar(" Skipping sync - syncEnabled: \(isCalendarSyncEnabled), hasPermission: \(hasCalendarPermission)")
             return 
         }
         
-        print("📅 Syncing shoot: \(shoot.shootName) (ID: \(shoot.id))")
+        DebugLogger.calendar(" Syncing shoot: \(shoot.shootName) (ID: \(shoot.id))")
         
         await ensureCalendarSetup()
         guard let calendar = shootScheduleCalendar else { 
-            print("📅 ❌ No calendar available for sync")
+            DebugLogger.calendar(" ❌ No calendar available for sync")
             return 
         }
         
@@ -1387,11 +1422,11 @@ class DataManager: ObservableObject {
         
         // Check if event already exists (after deduplication)
         if let existingEvent = await findEventForShoot(shoot) {
-            print("📅 Updating existing event for shoot: \(shoot.shootName)")
+            DebugLogger.calendar(" Updating existing event for shoot: \(shoot.shootName)")
             // Update existing event
             await updateEvent(existingEvent, with: shoot)
         } else {
-            print("📅 Creating new event for shoot: \(shoot.shootName)")
+            DebugLogger.calendar(" Creating new event for shoot: \(shoot.shootName)")
             // Create new event
             await createEventForShoot(shoot, in: calendar)
         }
@@ -1400,7 +1435,7 @@ class DataManager: ObservableObject {
     private func removeMarkedShoot(_ shoot: Shoot) async {
         guard hasCalendarPermission else { return }
         
-        print("📅 🗑️ Removing all events for shoot: \(shoot.shootName) (ID: \(shoot.id))")
+        DebugLogger.calendar(" 🗑️ Removing all events for shoot: \(shoot.shootName) (ID: \(shoot.id))")
         // Remove ALL events for this shoot, including any duplicates
         await removeAllEventsForShoot(shoot.id)
     }
@@ -1429,7 +1464,7 @@ class DataManager: ObservableObject {
         
         // If we find multiple events for the same ShootID, log warning and return the most recent
         if matchingEvents.count > 1 {
-            print("📅 ⚠️ Found \(matchingEvents.count) events for ShootID \(shoot.id), using most recent")
+            DebugLogger.calendar(" ⚠️ Found \(matchingEvents.count) events for ShootID \(shoot.id), using most recent")
             return matchingEvents.sorted { 
                 ($0.creationDate ?? Date.distantPast) > ($1.creationDate ?? Date.distantPast)
             }.first
@@ -1443,11 +1478,11 @@ class DataManager: ObservableObject {
         let event = EKEvent(eventStore: eventStore)
         configureEvent(event, with: shoot, in: calendar)
         
-        print("📅 Creating event: title='\(event.title ?? "nil")', calendar='\(event.calendar?.title ?? "nil")', startDate=\(event.startDate), endDate=\(event.endDate)")
+        DebugLogger.calendar(" Creating event: title='\(event.title ?? "nil")', calendar='\(event.calendar?.title ?? "nil")', startDate=\(event.startDate), endDate=\(event.endDate)")
         
         do {
             try eventStore.save(event, span: .thisEvent, commit: true)
-            print("📅 ✅ Created calendar event for: \(shoot.shootName) with eventIdentifier: \(event.eventIdentifier ?? "nil")")
+            DebugLogger.calendar(" ✅ Created calendar event for: \(shoot.shootName) with eventIdentifier: \(event.eventIdentifier ?? "nil")")
         } catch {
             print("❌ Failed to create event: \(error)")
             print("❌ Event details: calendar=\(event.calendar?.title ?? "nil"), hasPermission=\(hasCalendarPermission)")
@@ -1460,7 +1495,7 @@ class DataManager: ObservableObject {
         
         do {
             try eventStore.save(event, span: .thisEvent, commit: true)
-            print("📅 ✅ Updated calendar event for: \(shoot.shootName)")
+            DebugLogger.calendar(" ✅ Updated calendar event for: \(shoot.shootName)")
         } catch {
             print("❌ Failed to update event: \(error)")
         }
@@ -1492,7 +1527,7 @@ class DataManager: ObservableObject {
         event.startDate = shootStartDate
         event.endDate = calendarEndDate
         
-        print("📅 Event dates: shoot=\(shootStartDate) to \(shootEndDate), calendar=\(shootStartDate) to \(calendarEndDate), timezone=\(shootTimeZone.identifier)")
+        DebugLogger.calendar(" Event dates: shoot=\(shootStartDate) to \(shootEndDate), calendar=\(shootStartDate) to \(calendarEndDate), timezone=\(shootTimeZone.identifier)")
         
         // Create detailed description
         var description = "🎯 \(shoot.shootName)\n"
@@ -1558,25 +1593,25 @@ class DataManager: ObservableObject {
     }
     
     func removeShootScheduleCalendar() async {
-        print("📅 🗑️ Starting calendar removal process...")
-        print("📅 🔍 Calendar permission status: \(hasCalendarPermission ? "GRANTED" : "DENIED")")
+        DebugLogger.calendar(" 🗑️ Starting calendar removal process...")
+        DebugLogger.calendar(" 🔍 Calendar permission status: \(hasCalendarPermission ? "GRANTED" : "DENIED")")
         
         // List all calendars first for debugging
         let allCalendars = eventStore.calendars(for: .event)
-        print("📅 🔍 Found \(allCalendars.count) total calendars in system:")
+        DebugLogger.calendar(" 🔍 Found \(allCalendars.count) total calendars in system:")
         for cal in allCalendars {
-            print("📅   - '\(cal.title)' (ID: \(cal.calendarIdentifier), Source: \(cal.source?.title ?? "Unknown"))")
+            DebugLogger.calendar("   - '\(cal.title)' (ID: \(cal.calendarIdentifier), Source: \(cal.source?.title ?? "Unknown"))")
         }
         
         guard let calendar = shootScheduleCalendar else { 
-            print("📅 ⚠️ No ShootSchedule calendar reference stored - searching for calendar by name...")
+            DebugLogger.calendar(" ⚠️ No ShootSchedule calendar reference stored - searching for calendar by name...")
             
             // Try to find calendar by name as fallback
             let shootCalendars = allCalendars.filter { $0.title == calendarTitle }
-            print("📅 🔍 Found \(shootCalendars.count) calendars with title '\(calendarTitle)':")
+            DebugLogger.calendar(" 🔍 Found \(shootCalendars.count) calendars with title '\(calendarTitle)':")
             
             for cal in shootCalendars {
-                print("📅   - Calendar '\(cal.title)' (ID: \(cal.calendarIdentifier))")
+                DebugLogger.calendar("   - Calendar '\(cal.title)' (ID: \(cal.calendarIdentifier))")
                 // Try to remove each one
                 do {
                     let predicate = eventStore.predicateForEvents(
@@ -1585,22 +1620,22 @@ class DataManager: ObservableObject {
                         calendars: [cal]
                     )
                     let events = eventStore.events(matching: predicate)
-                    print("📅 🗑️ Removing calendar '\(cal.title)' with \(events.count) events...")
+                    DebugLogger.calendar(" 🗑️ Removing calendar '\(cal.title)' with \(events.count) events...")
                     
                     try eventStore.removeCalendar(cal, commit: true)
-                    print("📅 ✅ Successfully removed calendar '\(cal.title)'")
+                    DebugLogger.calendar(" ✅ Successfully removed calendar '\(cal.title)'")
                 } catch {
                     print("❌ Failed to remove calendar '\(cal.title)': \(error)")
                 }
             }
             
             if shootCalendars.isEmpty {
-                print("📅 ✅ No ShootSchedule calendars found to remove")
+                DebugLogger.calendar(" ✅ No ShootSchedule calendars found to remove")
             }
             return 
         }
         
-        print("📅 🗑️ Found calendar to remove: '\(calendar.title)' (ID: \(calendar.calendarIdentifier))")
+        DebugLogger.calendar(" 🗑️ Found calendar to remove: '\(calendar.title)' (ID: \(calendar.calendarIdentifier))")
         
         // Count existing events before deletion for debugging
         let predicate = eventStore.predicateForEvents(
@@ -1609,16 +1644,16 @@ class DataManager: ObservableObject {
             calendars: [calendar]
         )
         let existingEvents = eventStore.events(matching: predicate)
-        print("📅 🗑️ Calendar contains \(existingEvents.count) events that will be removed")
+        DebugLogger.calendar(" 🗑️ Calendar contains \(existingEvents.count) events that will be removed")
         
         // Show some sample events
         if existingEvents.count > 0 {
-            print("📅 🔍 Sample events to be removed:")
+            DebugLogger.calendar(" 🔍 Sample events to be removed:")
             for (index, event) in existingEvents.prefix(3).enumerated() {
-                print("📅   \(index + 1). '\(event.title ?? "No Title")' on \(event.startDate)")
+                DebugLogger.calendar("   \(index + 1). '\(event.title ?? "No Title")' on \(event.startDate)")
             }
             if existingEvents.count > 3 {
-                print("📅   ... and \(existingEvents.count - 3) more events")
+                DebugLogger.calendar("   ... and \(existingEvents.count - 3) more events")
             }
         }
         
@@ -1630,18 +1665,18 @@ class DataManager: ObservableObject {
             UserDefaults.standard.removeObject(forKey: "shootScheduleCalendarId")
             UserDefaults.standard.removeObject(forKey: "hasSelectedCalendarSource")
             
-            print("📅 ✅ Successfully removed ShootSchedule calendar '\(calendar.title)' and all \(existingEvents.count) events")
-            print("📅 ✅ Cleared calendar reference and UserDefaults storage")
+            DebugLogger.calendar(" ✅ Successfully removed ShootSchedule calendar '\(calendar.title)' and all \(existingEvents.count) events")
+            DebugLogger.calendar(" ✅ Cleared calendar reference and UserDefaults storage")
             
             // Double-check that calendar was actually removed
             let updatedCalendars = eventStore.calendars(for: .event)
             let remainingShootCalendars = updatedCalendars.filter { $0.title == calendarTitle }
             if remainingShootCalendars.isEmpty {
-                print("📅 ✅ Confirmed: No '\(calendarTitle)' calendars remain in system")
+                DebugLogger.calendar(" ✅ Confirmed: No '\(calendarTitle)' calendars remain in system")
             } else {
-                print("📅 ⚠️ Warning: Found \(remainingShootCalendars.count) remaining '\(calendarTitle)' calendars:")
+                DebugLogger.calendar(" ⚠️ Warning: Found \(remainingShootCalendars.count) remaining '\(calendarTitle)' calendars:")
                 for cal in remainingShootCalendars {
-                    print("📅 ⚠️   - '\(cal.title)' (ID: \(cal.calendarIdentifier))")
+                    DebugLogger.calendar(" ⚠️   - '\(cal.title)' (ID: \(cal.calendarIdentifier))")
                 }
             }
             
@@ -1653,15 +1688,15 @@ class DataManager: ObservableObject {
     }
     
     func removeAllShootEvents() async {
-        print("📅 🗑️ removeAllShootEvents() called - will remove all synced shoot events")
+        DebugLogger.calendar(" 🗑️ removeAllShootEvents() called - will remove all synced shoot events")
         
         guard hasCalendarPermission else { 
-            print("📅 ⚠️ No calendar permission - cannot remove events")
+            DebugLogger.calendar(" ⚠️ No calendar permission - cannot remove events")
             return 
         }
         
         guard let calendar = shootScheduleCalendar else { 
-            print("📅 ⚠️ No ShootSchedule calendar reference - searching for events to remove...")
+            DebugLogger.calendar(" ⚠️ No ShootSchedule calendar reference - searching for events to remove...")
             
             // Try to find all ShootSchedule events even without calendar reference
             let allCalendars = eventStore.calendars(for: .event)
@@ -1671,7 +1706,7 @@ class DataManager: ObservableObject {
             return
         }
         
-        print("📅 🔍 Removing events from calendar: '\(calendar.title)'")
+        DebugLogger.calendar(" 🔍 Removing events from calendar: '\(calendar.title)'")
         
         // Method 1: Remove all events that have ShootID in notes
         await removeAllEventsFromCalendar(calendar)
@@ -1679,14 +1714,14 @@ class DataManager: ObservableObject {
         // Method 2: Also iterate through marked shoots and remove them individually
         // This ensures we catch any events that might not have proper ShootID notes
         let markedShootsToRemove = shoots.filter { markedShootIds.contains($0.id) }
-        print("📅 🔍 Found \(markedShootsToRemove.count) marked shoots to remove from calendar")
+        DebugLogger.calendar(" 🔍 Found \(markedShootsToRemove.count) marked shoots to remove from calendar")
         
         for shoot in markedShootsToRemove {
-            print("📅 🗑️ Removing events for shoot: \(shoot.shootName) (ID: \(shoot.id))")
+            DebugLogger.calendar(" 🗑️ Removing events for shoot: \(shoot.shootName) (ID: \(shoot.id))")
             await removeAllEventsForShoot(shoot.id)
         }
         
-        print("📅 ✅ removeAllShootEvents() completed - removed all shoot events")
+        DebugLogger.calendar(" ✅ removeAllShootEvents() completed - removed all shoot events")
     }
     
     private func removeAllEventsFromCalendar(_ calendar: EKCalendar) async {
@@ -1707,15 +1742,15 @@ class DataManager: ObservableObject {
         }
         
         if shootEvents.count > 0 {
-            print("📅 🗑️ Found \(shootEvents.count) shoot events to remove from calendar '\(calendar.title)'")
+            DebugLogger.calendar(" 🗑️ Found \(shootEvents.count) shoot events to remove from calendar '\(calendar.title)'")
             
             // Show sample events
             for (index, event) in shootEvents.prefix(3).enumerated() {
                 let shootId = extractShootIDFromNotes(event.notes)
-                print("📅   \(index + 1). '\(event.title ?? "No Title")' (ShootID: \(shootId ?? -1))")
+                DebugLogger.calendar("   \(index + 1). '\(event.title ?? "No Title")' (ShootID: \(shootId ?? -1))")
             }
             if shootEvents.count > 3 {
-                print("📅   ... and \(shootEvents.count - 3) more events")
+                DebugLogger.calendar("   ... and \(shootEvents.count - 3) more events")
             }
             
             // Remove each event
@@ -1727,7 +1762,7 @@ class DataManager: ObservableObject {
                     try eventStore.remove(event, span: .thisEvent)
                     removedCount += 1
                 } catch {
-                    print("📅 ❌ Failed to remove event '\(event.title ?? "Unknown")': \(error)")
+                    DebugLogger.calendar(" ❌ Failed to remove event '\(event.title ?? "Unknown")': \(error)")
                     failedCount += 1
                 }
             }
@@ -1736,17 +1771,17 @@ class DataManager: ObservableObject {
             if removedCount > 0 {
                 do {
                     try eventStore.commit()
-                    print("📅 ✅ Successfully removed \(removedCount) events from calendar '\(calendar.title)'")
+                    DebugLogger.calendar(" ✅ Successfully removed \(removedCount) events from calendar '\(calendar.title)'")
                 } catch {
-                    print("📅 ❌ Failed to commit calendar changes: \(error)")
+                    DebugLogger.calendar(" ❌ Failed to commit calendar changes: \(error)")
                 }
             }
             
             if failedCount > 0 {
-                print("📅 ⚠️ Failed to remove \(failedCount) events")
+                DebugLogger.calendar(" ⚠️ Failed to remove \(failedCount) events")
             }
         } else {
-            print("📅 ℹ️ No shoot events found in calendar '\(calendar.title)'")
+            DebugLogger.calendar(" ℹ️ No shoot events found in calendar '\(calendar.title)'")
         }
     }
     

@@ -39,6 +39,9 @@ RUN mkdir -p data
 
 COPY /data/Club_Locations.csv data/
 
+# Firebase credentials are provided via FIREBASE_CREDENTIALS environment variable
+# for security reasons (not committed to git)
+
 # Install cron
 #RUN apt-get update && apt-get install -y cron
 

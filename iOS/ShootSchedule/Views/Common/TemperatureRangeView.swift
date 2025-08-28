@@ -236,7 +236,7 @@ struct TemperatureRangeView_Previews: PreviewProvider {
                     Spacer()
                 }
                 .padding()
-                .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+                .background(Color.primaryBackground)
                 .cornerRadius(8)
                 
                 VStack(alignment: .trailing, spacing: 2) {
@@ -245,7 +245,7 @@ struct TemperatureRangeView_Previews: PreviewProvider {
                     TemperatureRangeView(shoot: sampleShootWinter, style: .detail)
                 }
                 .padding()
-                .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+                .background(Color.primaryBackground)
                 .cornerRadius(8)
             }
         }

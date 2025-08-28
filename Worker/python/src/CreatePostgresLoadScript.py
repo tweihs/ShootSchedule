@@ -17,8 +17,11 @@ def load_and_insert_data(output_dir):
     # Get the database URL from the environment variables or use the statically defined URL
     DB_URI: str = os.getenv('DATABASE_URL', 'postgresql://u8bc0f64rlk46n:p24e608893e2e9812f8db8234878db631956fcbae5afe81febf1e95126c8fa26f@cbdhrtd93854d5.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/de5iln7eou0tgj')
 
-    if 'DYNO' in os.environ:
-        DB_URI = DB_URI.replace("://", "ql+psycopg2://", 1)
+    # Fix postgres:// to postgresql:// for SQLAlchemy 1.4+ compatibility
+    # Heroku provides postgres:// but SQLAlchemy needs postgresql://
+    if DB_URI.startswith('postgres://'):
+        DB_URI = DB_URI.replace('postgres://', 'postgresql://', 1)
+        print("📝 Fixed database URL for SQLAlchemy compatibility")
 
     # Read the CSV
     geocoded_file = os.path.join(output_dir, "Geocoded_Combined_Shoot_Schedule_2024.csv")

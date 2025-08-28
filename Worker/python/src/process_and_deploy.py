@@ -29,14 +29,23 @@ def run_workflow():
     print(f"⏰ Started at: {datetime.now().isoformat()}")
     print()
     
-    # Determine output directory
+    # Determine output directory - always use project root's data directory
     if os.path.exists('/.dockerenv') or os.getenv('IN_DOCKER'):
         output_dir = "/app/data"
     else:
-        output_dir = "../data"
+        # Get the script's directory and find project root
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if script_dir.endswith('python/src'):
+            # Running from python/src, use project root's data directory
+            project_root = os.path.abspath(os.path.join(script_dir, '..', '..'))
+            output_dir = os.path.join(project_root, 'data')
+        else:
+            # Running from somewhere else, use relative path
+            output_dir = "../data"
     
     # Ensure output directory exists
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+    print(f"📁 Using data directory: {os.path.abspath(output_dir)}")
     
     workflow_steps = []
     start_time = time.time()
@@ -51,13 +60,13 @@ def run_workflow():
         
         # URLs for NSSA and NSCA Excel files
         urls = [
-            f"https://prod-nssa-api.azurewebsites.net/v1.0/public/Exports/EventList/{current_year}/NSSA_{current_year}_Shoot_Schedule_For_Web.xls",
-            f"https://prod-nssa-api.azurewebsites.net/v1.0/public/Exports/EventList/{next_year}/NSSA_{next_year}_Shoot_Schedule_For_Web.xls",
-            f"https://nsca.nssa-nsca.org/wp-content/uploads/shoot-schedules/xls/NSCA_{current_year}_Shoot_Schedule_For_Web.xls",
-            f"https://nsca.nssa-nsca.org/wp-content/uploads/shoot-schedules/xls/NSCA_{next_year}_Shoot_Schedule_For_Web.xls"
+            f"https://www.nssa-nsca.org/Schedules/NSSA_{current_year}_Shoot_Schedule_For_Web.xls",
+            f"https://www.nssa-nsca.org/Schedules/NSSA_{next_year}_Shoot_Schedule_For_Web.xls",
+            f"https://www.nssa-nsca.org/Schedules/NSCA_{current_year}_Shoot_Schedule_For_Web.xls",
+            f"https://www.nssa-nsca.org/Schedules/NSCA_{next_year}_Shoot_Schedule_For_Web.xls"
         ]
         
-        # Filter URLs to only current and next year
+        # Filter URLs to only current year NSSA and NSCA
         urls = [urls[0], urls[2]]  # Current year NSSA and NSCA
         
         downloaded = download_files(urls, output_dir)
@@ -81,12 +90,13 @@ def run_workflow():
                 'status': 'success'
             })
             
-            # Step 3: Geocode addresses
+            # Step 3: Geocode addresses (Required for map functionality)
             print("\n🗺️ Step 3: Geocoding shoot locations...")
             print("-" * 40)
             
+            # Geocode the data - required for map functionality in iOS app
             geocode_data(output_dir)
-            print("✅ Geocoding complete")
+            print("✅ Geocoding completed")
             workflow_steps.append({
                 'step': 'geocode',
                 'status': 'success'

@@ -58,20 +58,40 @@ class SQLiteService: ObservableObject {
     }
     
     private func setupDatabase() {
-        // Always use the bundled database if it exists (to get latest weather data)
-        if let bundledURL = bundledDatabaseURL {
-            do {
-                // Remove existing database if it exists
-                if FileManager.default.fileExists(atPath: databaseURL.path) {
-                    try FileManager.default.removeItem(at: databaseURL)
-                    print("Removed old SQLite database from Documents directory")
+        // Only copy bundled database if no database exists in Documents directory
+        // This ensures we don't overwrite a downloaded database with an older bundled one
+        if !FileManager.default.fileExists(atPath: databaseURL.path) {
+            // First time setup - copy bundled database if it exists
+            if let bundledURL = bundledDatabaseURL {
+                do {
+                    // Copy bundled database to Documents directory for initial setup
+                    try FileManager.default.copyItem(at: bundledURL, to: databaseURL)
+                    print("📦 Initial setup: Copied bundled SQLite database to Documents directory")
+                    
+                    // Log the bundled database date for comparison
+                    if let attributes = try? FileManager.default.attributesOfItem(atPath: databaseURL.path),
+                       let modDate = attributes[.modificationDate] as? Date {
+                        let formatter = DateFormatter()
+                        formatter.dateStyle = .medium
+                        formatter.timeStyle = .medium
+                        print("📦 Bundled database date: \(formatter.string(from: modDate))")
+                    }
+                } catch {
+                    print("❌ Failed to copy bundled database: \(error)")
                 }
-                
-                // Copy fresh bundled database to Documents directory
-                try FileManager.default.copyItem(at: bundledURL, to: databaseURL)
-                print("Copied fresh bundled SQLite database to Documents directory")
-            } catch {
-                print("Failed to copy bundled database: \(error)")
+            } else {
+                print("⚠️ No bundled database found and no existing database in Documents")
+            }
+        } else {
+            print("✅ Using existing SQLite database from Documents directory")
+            
+            // Log the existing database date
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: databaseURL.path),
+               let modDate = attributes[.modificationDate] as? Date {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .medium
+                print("📅 Existing database date: \(formatter.string(from: modDate))")
             }
         }
     }
@@ -97,12 +117,22 @@ class SQLiteService: ObservableObject {
     }
     
     func downloadLatestDatabase(from urlString: String) async -> Bool {
-        // Check if we need to update using HTTP headers
-        if let shouldUpdate = await shouldUpdateDatabaseUsingHeaders(urlString: urlString) {
+        // First check with HEAD request if we need to update
+        print("\n🔍 Checking if database update is needed...")
+        let headCheckResult = await shouldUpdateDatabaseUsingHeaders(urlString: urlString)
+        
+        if let shouldUpdate = headCheckResult {
             if !shouldUpdate {
-                print("📱 Database is up to date, skipping download")
+                print("📱 Database is up to date (based on file timestamps), skipping download")
                 return false
             }
+            print("✅ Database update needed (local file is older), proceeding with download")
+            // Clear the stored Last-Modified to force a fresh download
+            // This ensures we don't get a 304 when we know the local file is stale
+            UserDefaults.standard.removeObject(forKey: "DatabaseLastModified")
+            UserDefaults.standard.removeObject(forKey: "DatabaseETag")
+        } else {
+            print("⚠️ Could not determine update status from HEAD request, proceeding with conditional download")
         }
         
         guard let url = URL(string: urlString) else {
@@ -113,29 +143,81 @@ class SQLiteService: ObservableObject {
         do {
             print("📥 Downloading database from: \(urlString)")
             
-            // Create request with If-Modified-Since header if we have a stored date
+            // Create request - only use conditional headers if we're not sure about needing update
             var request = URLRequest(url: url)
-            if let lastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
-                request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
-                print("📅 Checking if modified since: \(lastModified)")
+            if headCheckResult == nil || headCheckResult == false {
+                // Only use conditional headers if HEAD check was inconclusive or said no update
+                // If HEAD check said we need update, we cleared the stored values above
+                if let lastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
+                    request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
+                    print("📅 Using conditional download with If-Modified-Since: \(lastModified)")
+                }
+            } else {
+                print("📥 Forcing fresh download (local file is stale)")
             }
             
             let (data, response) = try await URLSession.shared.data(for: request)
             
             // Check response headers
+            var lastModifiedDate: Date?
             if let httpResponse = response as? HTTPURLResponse {
                 print("📊 Response status: \(httpResponse.statusCode)")
                 
                 // If not modified, we're done
                 if httpResponse.statusCode == 304 {
                     print("✅ Database not modified (304), keeping current version")
+                    
+                    // Still show the Last-Modified date from our stored value
+                    if let lastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
+                        print("📅 Server file last modified: \(lastModified)")
+                        
+                        // Parse and display in readable format
+                        let dateFormatter = DateFormatter()
+                        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+                        dateFormatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+                        if let serverDate = dateFormatter.date(from: lastModified) {
+                            let displayFormatter = DateFormatter()
+                            displayFormatter.dateStyle = .medium
+                            displayFormatter.timeStyle = .medium
+                            print("📅 Server file modification date: \(displayFormatter.string(from: serverDate))")
+                            
+                            // Show local file timestamp for comparison (diagnostic only)
+                            if let attributes = try? FileManager.default.attributesOfItem(atPath: databaseURL.path),
+                               let localModDate = attributes[.modificationDate] as? Date {
+                                print("📅 Local file modification date: \(displayFormatter.string(from: localModDate))")
+                                
+                                // Just log the difference for diagnostics
+                                let timeDiff = abs(serverDate.timeIntervalSince(localModDate))
+                                if timeDiff > 60 { // More than 1 minute difference
+                                    print("⚠️ Note: Local file timestamp differs from server by \(Int(timeDiff)) seconds")
+                                    print("⚠️ This may indicate the file was downloaded before timestamp preservation was implemented")
+                                }
+                            }
+                        }
+                    }
                     return false
                 }
                 
                 // Save new last modified date and etag
                 if let lastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified") {
-                    print("📅 New last modified: \(lastModified)")
+                    print("📅 New last modified header: \(lastModified)")
                     UserDefaults.standard.set(lastModified, forKey: "DatabaseLastModified")
+                    
+                    // Parse the Last-Modified header to get Date
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+                    dateFormatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+                    lastModifiedDate = dateFormatter.date(from: lastModified)
+                    
+                    if let date = lastModifiedDate {
+                        let displayFormatter = DateFormatter()
+                        displayFormatter.dateStyle = .medium
+                        displayFormatter.timeStyle = .medium
+                        print("📅 Parsed server modification date: \(displayFormatter.string(from: date))")
+                        print("📅 Raw date: \(date)")
+                    } else {
+                        print("⚠️ Failed to parse Last-Modified date from: \(lastModified)")
+                    }
                 }
                 if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
                     print("🏷️ ETag: \(etag)")
@@ -159,6 +241,22 @@ class SQLiteService: ObservableObject {
                 // Replace with new database
                 try FileManager.default.removeItem(at: databaseURL)
                 try FileManager.default.moveItem(at: tempURL, to: databaseURL)
+                
+                // Set the file's modification date to match the server's Last-Modified header
+                if let lastModifiedDate = lastModifiedDate {
+                    try FileManager.default.setAttributes([.modificationDate: lastModifiedDate], ofItemAtPath: databaseURL.path)
+                    
+                    let displayFormatter = DateFormatter()
+                    displayFormatter.dateStyle = .medium
+                    displayFormatter.timeStyle = .medium
+                    print("📅 Set file modification date to: \(displayFormatter.string(from: lastModifiedDate))")
+                    
+                    // Verify it was set correctly
+                    if let attributes = try? FileManager.default.attributesOfItem(atPath: databaseURL.path),
+                       let fileModDate = attributes[.modificationDate] as? Date {
+                        print("📅 Verified file modification date: \(displayFormatter.string(from: fileModDate))")
+                    }
+                }
                 
                 // Reopen database
                 openDatabase()
@@ -188,45 +286,130 @@ class SQLiteService: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "HEAD"
             
-            // Add If-Modified-Since header if we have a stored date
-            if let lastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
-                request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
-            }
-            
-            // Add If-None-Match header if we have an ETag
-            if let etag = UserDefaults.standard.string(forKey: "DatabaseETag") {
-                request.setValue(etag, forHTTPHeaderField: "If-None-Match")
-            }
+            // DON'T send If-Modified-Since or If-None-Match in HEAD request
+            // We want to get the server's actual Last-Modified date to compare with our local file
+            // Only send these headers when doing the actual download
             
             let (_, response) = try await URLSession.shared.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
                 print("🔍 HEAD request status: \(httpResponse.statusCode)")
                 
-                // 304 Not Modified means we're up to date
-                if httpResponse.statusCode == 304 {
-                    print("✅ Database not modified (304)")
-                    return false
+                // Get the server's Last-Modified date
+                if let serverLastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified") {
+                    print("📅 Server Last-Modified header: \(serverLastModified)")
+                    
+                    // Parse server date
+                    let dateFormatter = DateFormatter()
+                    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+                    dateFormatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+                    
+                    if let serverDate = dateFormatter.date(from: serverLastModified) {
+                        let displayFormatter = DateFormatter()
+                        displayFormatter.dateStyle = .medium
+                        displayFormatter.timeStyle = .medium
+                        print("📅 Server file modification date: \(displayFormatter.string(from: serverDate))")
+                        
+                        // Compare with local file's actual modification date
+                        if let attributes = try? FileManager.default.attributesOfItem(atPath: databaseURL.path),
+                           let localModDate = attributes[.modificationDate] as? Date {
+                            print("📅 Local file modification date: \(displayFormatter.string(from: localModDate))")
+                            
+                            // If local file is older than server, we need to download
+                            if localModDate < serverDate {
+                                let timeDiff = Int(serverDate.timeIntervalSince(localModDate))
+                                print("⚠️ Local file is \(timeDiff) seconds older than server")
+                                print("📥 Need to download newer version from server")
+                                
+                                // DON'T update stored Last-Modified here - only after successful download
+                                // UserDefaults.standard.set(serverLastModified, forKey: "DatabaseLastModified")
+                                
+                                return true // Need to download
+                            } else if localModDate > serverDate {
+                                // Local file is newer (shouldn't happen in normal flow)
+                                let timeDiff = Int(localModDate.timeIntervalSince(serverDate))
+                                print("⚠️ Local file is \(timeDiff) seconds newer than server")
+                                print("✅ Keeping local version (newer than server)")
+                                return false
+                            } else {
+                                // Same timestamp - need additional checks
+                                print("📅 Local and server have same modification date")
+                                
+                                // Check file size
+                                let localFileSize = (try? FileManager.default.attributesOfItem(atPath: databaseURL.path))?[.size] as? Int
+                                if let serverSizeStr = httpResponse.value(forHTTPHeaderField: "Content-Length"),
+                                   let serverFileSize = Int(serverSizeStr),
+                                   let localSize = localFileSize {
+                                    print("📊 Local file size: \(localSize) bytes")
+                                    print("📊 Server file size: \(serverFileSize) bytes")
+                                    
+                                    if localSize != serverFileSize {
+                                        print("⚠️ File sizes differ despite same timestamp!")
+                                        print("📥 Need to download (size mismatch)")
+                                        // DON'T update stored Last-Modified here - only after successful download
+                                        return true
+                                    }
+                                }
+                                
+                                // Check ETag if available
+                                if let serverETag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                                    print("🏷️ Server ETag: \(serverETag)")
+                                    if let storedETag = UserDefaults.standard.string(forKey: "DatabaseETag") {
+                                        print("🏷️ Stored ETag: \(storedETag)")
+                                        if serverETag != storedETag {
+                                            print("⚠️ ETags differ despite same timestamp!")
+                                            print("📥 Need to download (ETag mismatch)")
+                                            // DON'T update stored Last-Modified here - only after successful download
+                                            return true
+                                        }
+                                    } else {
+                                        // No stored ETag, can't compare
+                                        print("⚠️ No stored ETag for comparison")
+                                    }
+                                }
+                                
+                                print("✅ Local file matches server (same date, size, and ETag)")
+                                
+                                // Don't update stored values here - they should match already
+                                
+                                return false // No need to download
+                            }
+                        } else {
+                            // No local file or can't read attributes - need to download
+                            print("⚠️ No local file or can't read attributes")
+                            print("📥 Need to download from server")
+                            
+                            // DON'T store the server's Last-Modified here - only after successful download
+                            
+                            return true // Need to download
+                        }
+                    } else {
+                        print("⚠️ Failed to parse server Last-Modified date")
+                        // Can't compare dates, fall back to other checks
+                    }
+                } else {
+                    print("⚠️ No Last-Modified header from server")
                 }
                 
-                // Check Last-Modified header
-                if let serverLastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified"),
-                   let storedLastModified = UserDefaults.standard.string(forKey: "DatabaseLastModified") {
-                    if serverLastModified == storedLastModified {
-                        print("📅 Last-Modified matches, no update needed")
-                        return false
+                // Always check ETag as primary indicator if date check was inconclusive
+                if let serverETag = httpResponse.value(forHTTPHeaderField: "ETag") {
+                    print("🏷️ Server ETag: \(serverETag)")
+                    
+                    if let storedETag = UserDefaults.standard.string(forKey: "DatabaseETag") {
+                        print("🏷️ Stored ETag: \(storedETag)")
+                        
+                        if serverETag == storedETag {
+                            print("✅ ETag matches - database is current")
+                            return false
+                        } else {
+                            print("⚠️ ETag changed - new database available!")
+                            print("📥 Need to download (ETag mismatch)")
+                            return true
+                        }
+                    } else {
+                        print("⚠️ No stored ETag - assuming update needed")
+                        return true
                     }
-                    print("📅 New version available (Last-Modified changed)")
-                }
-                
-                // Check ETag
-                if let serverETag = httpResponse.value(forHTTPHeaderField: "ETag"),
-                   let storedETag = UserDefaults.standard.string(forKey: "DatabaseETag") {
-                    if serverETag == storedETag {
-                        print("🏷️ ETag matches, no update needed")
-                        return false
-                    }
-                    print("🏷️ New version available (ETag changed)")
                 }
                 
                 // Show file size if available
@@ -262,6 +445,7 @@ class SQLiteService: ObservableObject {
                 if sqlite3_step(statement) == SQLITE_ROW {
                     let count = sqlite3_column_int(statement, 0)
                     print("✅ Database verification passed: \(count) shoots found")
+                    
                     return count > 0
                 }
             }

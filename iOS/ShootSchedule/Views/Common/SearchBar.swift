@@ -61,7 +61,7 @@ struct SearchBar: View {
                     }
                 }
             }
-            .background(Color.white.opacity(0.8))
+            .background(Color.secondaryBackground.opacity(0.8))
             .cornerRadius(10)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)

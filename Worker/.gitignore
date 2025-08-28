@@ -42,3 +42,8 @@ Thumbs.db
 # Test files
 test_*.sqlite
 test_*.db
+/data/NSCA_2024_Shoot_Schedule_For_Web.xls
+/data/NSCA_2025_Shoot_Schedule_For_Web.xls
+/data/NSSA_2024_Shoot_Schedule_For_Web.xls
+/data/NSSA_2025_Shoot_Schedule_For_Web.xls
+/data/last_modified.json

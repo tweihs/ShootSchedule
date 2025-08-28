@@ -14,7 +14,7 @@ struct SignInView: View {
     var body: some View {
         ZStack {
             // Same background as splash screen and app
-            Color(red: 1.0, green: 0.992, blue: 0.973)
+            Color.primaryBackground
                 .ignoresSafeArea()
             
             VStack {

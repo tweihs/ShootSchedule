@@ -3,7 +3,8 @@ import sqlite3
 import os
 import psycopg2
 from dotenv import load_dotenv
-from weather_estimation import add_weather_estimates_to_dataframe
+from WeatherEstimation import add_weather_estimates_to_dataframe
+from datetime import datetime, timezone
 
 
 def csv_to_sqlite(csv_file: str, sqlite_file: str):
@@ -215,8 +216,32 @@ def postgres_to_sqlite(sqlite_file: str, database_url: str = None):
 
         # Insert data from DataFrame into SQLite
         df.to_sql('shoots', sqlite_conn, if_exists='replace', index=False)
+        
+        # Create and populate metadata table with update timestamp
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Insert or update the last_updated timestamp
+        update_time = datetime.now(timezone.utc).isoformat()
+        cursor.execute('''
+            INSERT OR REPLACE INTO metadata (key, value, updated_at)
+            VALUES ('last_updated', ?, CURRENT_TIMESTAMP)
+        ''', (update_time,))
+        
+        # Also add shoot count for verification
+        cursor.execute('''
+            INSERT OR REPLACE INTO metadata (key, value, updated_at)
+            VALUES ('shoot_count', ?, CURRENT_TIMESTAMP)
+        ''', (str(len(df)),))
+        
         sqlite_conn.commit()
         print(f"SQLite database successfully created at: {sqlite_file}")
+        print(f"📅 Database updated at: {update_time}")
 
         # Sanity Check
         cursor.execute("SELECT COUNT(*) FROM shoots;")

@@ -107,7 +107,7 @@ struct AccountDetailsView: View {
                                 }
                             }
                             .padding()
-                            .background(Color.white.opacity(0.9))
+                            .background(Color.secondaryBackground.opacity(0.9))
                             .cornerRadius(10)
                         }
                         .padding(.horizontal)
@@ -143,7 +143,7 @@ struct AccountDetailsView: View {
                                 }
                             }
                             .padding()
-                            .background(Color.white.opacity(0.9))
+                            .background(Color.secondaryBackground.opacity(0.9))
                             .cornerRadius(10)
                         }
                         .padding(.horizontal)
@@ -263,7 +263,7 @@ struct AccountDetailsView: View {
                             }
                         }
                         .padding()
-                        .background(Color.white.opacity(0.9))
+                        .background(Color.secondaryBackground.opacity(0.9))
                         .cornerRadius(10)
                     }
                     .padding(.horizontal)
@@ -322,7 +322,7 @@ struct AccountDetailsView: View {
                             }
                         }
                         .padding()
-                        .background(Color.white.opacity(0.9))
+                        .background(Color.secondaryBackground.opacity(0.9))
                         .cornerRadius(10)
                     }
                     .padding(.horizontal)
@@ -355,7 +355,7 @@ struct AccountDetailsView: View {
                             )
                         }
                         .padding()
-                        .background(Color.white.opacity(0.9))
+                        .background(Color.secondaryBackground.opacity(0.9))
                         .cornerRadius(10)
                     }
                     .padding(.horizontal)
@@ -370,6 +370,11 @@ struct AccountDetailsView: View {
                                 Task {
                                     print("🔄 Manual database update check initiated by user")
                                     await dataManager.checkForDatabaseUpdates()
+                                    
+                                    // Refresh database info after update
+                                    await MainActor.run {
+                                        loadDatabaseInfo()
+                                    }
                                 }
                             }) {
                                 HStack {
@@ -408,7 +413,10 @@ struct AccountDetailsView: View {
                             
                             Button(action: {
                                 Task {
-                                    print("📅 🧹 Manual deduplication initiated by user")
+                                    DebugLogger.calendar("🧹 Manual deduplication initiated by user")
+                                    // First detect duplicates to log them
+                                    await dataManager.detectAndLogDuplicateEvents()
+                                    // Then remove the duplicates
                                     await dataManager.deduplicateEvents()
                                 }
                             }) {
@@ -441,7 +449,7 @@ struct AccountDetailsView: View {
                             
                             Button(action: {
                                 Task {
-                                    print("📅 🗑️ Manual calendar removal initiated by user")
+                                    DebugLogger.calendar("🗑️ Manual calendar removal initiated by user")
                                     await dataManager.removeAllShootEvents()
                                 }
                             }) {
@@ -471,7 +479,7 @@ struct AccountDetailsView: View {
                             .buttonStyle(PlainButtonStyle())
                         }
                         .padding()
-                        .background(Color.white.opacity(0.9))
+                        .background(Color.secondaryBackground.opacity(0.9))
                         .cornerRadius(10)
                     }
                     .padding(.horizontal)
@@ -500,13 +508,10 @@ struct AccountDetailsView: View {
                 // Debug available calendars when settings view appears
                 // Use background queue to avoid blocking UI
                 DispatchQueue.global(qos: .utility).async {
-                    print("📅 🔍 AccountDetailsView appeared - debugging calendars...")
+                    DebugLogger.calendar("🔍 AccountDetailsView appeared - debugging calendars...")
                     dataManager.debugAvailableCalendars()
                     
-                    // Only detect duplicates for logging, don't automatically deduplicate
-                    Task {
-                        await dataManager.detectAndLogDuplicateEvents()
-                    }
+                    // Removed automatic duplicate detection - only run on manual button press
                 }
                 
                 // Listen for app returning from background to check permissions
@@ -647,7 +652,7 @@ struct AccountDetailsView: View {
     }
     
     private func handleCalendarSyncToggle(_ newValue: Bool) {
-        print("📅 Toggle changed to: \(newValue), hasPermission: \(dataManager.hasCalendarPermission)")
+        DebugLogger.calendar("Toggle changed to: \(newValue), hasPermission: \(dataManager.hasCalendarPermission)")
         
         if newValue {
             // Turning ON calendar sync
@@ -755,15 +760,14 @@ struct AccountDetailsView: View {
         // Get database info from SQLiteService
         let sqliteService = SQLiteService()
         
-        // Get database file modification date
-        if let databaseURL = Bundle.main.url(forResource: "shoots", withExtension: "sqlite") {
-            do {
-                let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
-                databaseLastUpdated = attributes[.modificationDate] as? Date
-            } catch {
-                print("Error getting database file attributes: \(error)")
-                databaseLastUpdated = nil
-            }
+        // Get database file modification date from the actual database location
+        let databaseURL = sqliteService.databaseURL
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: databaseURL.path)
+            databaseLastUpdated = attributes[FileAttributeKey.modificationDate] as? Date
+        } catch {
+            print("Error getting database file attributes: \(error)")
+            databaseLastUpdated = nil
         }
         
         // Get shoot count from DataManager
@@ -985,7 +989,7 @@ struct CalendarSourceSelectionView: View {
                 }
             )
         }
-        .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+        .background(Color.primaryBackground)
     }
 }
 
@@ -1014,7 +1018,7 @@ struct CalendarSourceRow: View {
                     .foregroundColor(.secondary)
             }
             .padding()
-            .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+            .background(Color.primaryBackground)
             .cornerRadius(10)
         }
         .buttonStyle(PlainButtonStyle())

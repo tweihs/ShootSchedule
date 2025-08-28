@@ -7,6 +7,31 @@
 
 import SwiftUI
 
+// Color extension for adaptive backgrounds
+extension Color {
+    // Adaptive background that works in Light and Dark modes
+    static var primaryBackground: Color {
+        Color(UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor.systemBackground
+            } else {
+                return UIColor(red: 1.0, green: 0.992, blue: 0.973, alpha: 1.0)
+            }
+        })
+    }
+    
+    // Adaptive secondary background for cards/sheets
+    static var secondaryBackground: Color {
+        Color(UIColor { traitCollection in
+            if traitCollection.userInterfaceStyle == .dark {
+                return UIColor.secondarySystemBackground
+            } else {
+                return UIColor.white
+            }
+        })
+    }
+}
+
 // Location usage description for Info.plist
 // This is handled by the build system in modern iOS projects
 @main
@@ -27,12 +52,23 @@ struct ShootScheduleApp: App {
                         dataManager.setupAuthenticatedFeatures()
                     }
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                        // App is returning to foreground, sync preferences from server
-                        print("📱 App returning to foreground, syncing preferences...")
+                        // App is returning to foreground, check for updates
+                        print("📱 [AUTHENTICATED] App returning to foreground, checking for database updates...")
+                        print("📊 Current shoot count: \(dataManager.shoots.count)")
+                        
                         Task {
                             // Small delay to ensure UI is ready
                             try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                            
+                            print("🔄 Starting database check from foreground handler...")
+                            // Check for database updates
+                            await dataManager.checkForDatabaseUpdates()
+                            print("✅ Database check completed from foreground handler")
+                            
+                            // Also sync preferences from server
                             await dataManager.fetchAndApplyUserPreferences()
+                            
+                            print("📊 Updated shoot count: \(dataManager.shoots.count)")
                         }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
@@ -46,7 +82,7 @@ struct ShootScheduleApp: App {
             } else {
                 // Inline SignInView to avoid import issues
                 ZStack {
-                    Color(red: 1.0, green: 0.992, blue: 0.973)
+                    Color.primaryBackground
                         .ignoresSafeArea()
                     
                     VStack {
@@ -111,15 +147,8 @@ struct ShootScheduleApp: App {
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                    // App is returning to foreground, sync preferences if authenticated
-                    if authManager.isAuthenticated {
-                        print("📱 App returning to foreground, syncing preferences...")
-                        Task {
-                            // Small delay to ensure UI is ready
-                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
-                            await dataManager.fetchAndApplyUserPreferences()
-                        }
-                    }
+                    // App is returning to foreground while not authenticated
+                    print("📱 [NOT AUTHENTICATED] App returning to foreground (no action needed)")
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     // App is going to background, save data

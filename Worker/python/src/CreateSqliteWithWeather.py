@@ -3,7 +3,7 @@ import sqlite3
 import os
 import psycopg2
 from dotenv import load_dotenv
-from weather_estimation import add_weather_estimates_to_dataframe
+from WeatherEstimation import add_weather_estimates_to_dataframe
 
 
 def csv_to_sqlite_with_weather(csv_file: str, sqlite_file: str):

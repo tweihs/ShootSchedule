@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-08-28T13:21:51.425583",
+  "duration_seconds": 5.474939823150635,
+  "steps": [
+    {
+      "step": "download",
+      "status": "skipped",
+      "reason": "no_updates"
+    },
+    {
+      "step": "force_deploy",
+      "status": "success",
+      "forced": true,
+      "url": "https://firebasestorage.googleapis.com/v0/b/shootsdb-11bb7.firebasestorage.app/o/shoots.sqlite?alt=media"
+    }
+  ],
+  "success": true
+}

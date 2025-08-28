@@ -44,7 +44,7 @@ struct MultiSelectDropdown: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.9))
+                        .fill(Color.secondaryBackground.opacity(0.9))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color(UIColor.separator), lineWidth: 1)
@@ -101,7 +101,7 @@ struct MultiSelectDropdown: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.9))
+                        .fill(Color.secondaryBackground.opacity(0.9))
                         .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                 )
                 .overlay(
@@ -195,7 +195,7 @@ struct MonthMultiSelectDropdown: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.9))
+                        .fill(Color.secondaryBackground.opacity(0.9))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color(UIColor.separator), lineWidth: 1)
@@ -256,7 +256,7 @@ struct MonthMultiSelectDropdown: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.9))
+                        .fill(Color.secondaryBackground.opacity(0.9))
                         .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                 )
                 .overlay(
@@ -287,7 +287,7 @@ struct MultiSelectDropdown_Previews: PreviewProvider {
             Spacer()
         }
         .padding()
-        .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+        .background(Color.primaryBackground)
         .previewLayout(.sizeThatFits)
     }
 }

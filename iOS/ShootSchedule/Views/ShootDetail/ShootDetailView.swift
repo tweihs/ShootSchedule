@@ -224,7 +224,7 @@ struct ShootDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+        .background(Color.primaryBackground)
         .ignoresSafeArea(edges: .horizontal)
         .onAppear {
             isMarked = dataManager.isShootMarked(shoot)

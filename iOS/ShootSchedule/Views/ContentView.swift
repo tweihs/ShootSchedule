@@ -88,7 +88,7 @@ struct ContentView: View {
                 }
             }
             .navigationBarHidden(true)
-            .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+            .background(Color.primaryBackground)
             .onTapGesture {
                 // Dismiss keyboard when tapping outside search area
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -129,12 +129,12 @@ struct ContentView: View {
         .navigationViewStyle(StackNavigationViewStyle())
         .sheet(isPresented: $showingAccountDetails) {
             AccountDetailsView()
-                .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+                .background(Color.primaryBackground)
         }
         .sheet(item: $selectedShoot) { shoot in
             ShootDetailView(shoot: shoot)
                 .environmentObject(dataManager)
-                .background(Color(red: 1.0, green: 0.992, blue: 0.973))
+                .background(Color.primaryBackground)
         }
     }
     

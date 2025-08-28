@@ -49,7 +49,12 @@
       "Bash(cd:*)",
       "Bash(cd:*)",
       "Bash(cd:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(timeout:*)",
+      "Bash(source:*)",
+      "Bash(cat:*)",
+      "Bash(xcrun simctl get_app_container:*)",
+      "Bash(xcrun simctl list:*)"
     ],
     "deny": [],
     "ask": [],
