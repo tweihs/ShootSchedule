@@ -51,7 +51,15 @@ def csv_to_sqlite(csv_file: str, sqlite_file: str):
             "Region" TEXT,
             "full_address" TEXT,
             "latitude" REAL,
-            "longitude" REAL
+            "longitude" REAL,
+            "morning_temp_f" INTEGER,
+            "afternoon_temp_f" INTEGER,
+            "morning_temp_c" INTEGER,
+            "afternoon_temp_c" INTEGER,
+            "duration_days" INTEGER,
+            "morning_temp_band" TEXT,
+            "afternoon_temp_band" TEXT,
+            "estimation_method" TEXT
         );
         ''')
 
@@ -162,6 +170,11 @@ def postgres_to_sqlite(sqlite_file: str, database_url: str = None):
         
         print(f"Retrieved {len(df)} records from PostgreSQL")
         
+        # Add weather estimates to the dataframe
+        print("Adding weather estimates...")
+        df = add_weather_estimates_to_dataframe(df)
+        print(f"Weather estimates added for {len(df)} records")
+        
     except Exception as e:
         print(f"Error connecting to PostgreSQL: {e}")
         raise
@@ -196,7 +209,15 @@ def postgres_to_sqlite(sqlite_file: str, database_url: str = None):
             "Region" TEXT,
             "full_address" TEXT,
             "latitude" REAL,
-            "longitude" REAL
+            "longitude" REAL,
+            "morning_temp_f" INTEGER,
+            "afternoon_temp_f" INTEGER,
+            "morning_temp_c" INTEGER,
+            "afternoon_temp_c" INTEGER,
+            "duration_days" INTEGER,
+            "morning_temp_band" TEXT,
+            "afternoon_temp_band" TEXT,
+            "estimation_method" TEXT
         );
         ''')
 
