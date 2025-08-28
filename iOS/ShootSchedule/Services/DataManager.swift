@@ -135,17 +135,8 @@ class DataManager: ObservableObject {
         if success {
             print("✅ Database was updated, reloading shoots...")
             await MainActor.run {
-                // Clear existing shoots to force UI refresh
-                self.shoots = []
-                
-                // Load fresh data from updated database
-                loadShootsFromDatabase()
-                
-                // Re-apply marked status after loading new data
-                applyMarkedStatus()
-                
-                // Force UI update
-                self.objectWillChange.send()
+                // Smart update to preserve scroll position
+                updateShootsWithoutScrollReset()
             }
             
             print("📊 Loaded \(shoots.count) shoots from updated database")
@@ -177,6 +168,67 @@ class DataManager: ObservableObject {
         
         // Update database timestamp
         updateDatabaseTimestamp()
+    }
+    
+    /// Update shoots without resetting scroll position
+    /// This method intelligently updates the shoots array to minimize UI disruption
+    private func updateShootsWithoutScrollReset() {
+        let newShoots = sqliteService.loadShoots()
+        
+        guard !newShoots.isEmpty else {
+            print("⚠️ No shoots loaded from updated database")
+            return
+        }
+        
+        // Create a dictionary for fast lookup
+        let newShootsById = Dictionary(uniqueKeysWithValues: newShoots.map { ($0.id, $0) })
+        let oldShootIds = Set(shoots.map { $0.id })
+        let newShootIds = Set(newShoots.map { $0.id })
+        
+        // Check if we need to update at all
+        if oldShootIds == newShootIds && shoots.count == newShoots.count {
+            // Same shoots, just update the data in place
+            for i in shoots.indices {
+                if let updatedShoot = newShootsById[shoots[i].id] {
+                    // Check if data actually changed before updating
+                    if !shootsAreEqual(shoots[i], updatedShoot) {
+                        shoots[i] = updatedShoot
+                    }
+                }
+            }
+        } else {
+            // Structure changed, but still try to be smart about it
+            var updatedShoots: [Shoot] = []
+            
+            // First, add all shoots in their new order
+            for newShoot in newShoots {
+                updatedShoots.append(newShoot)
+            }
+            
+            // Only update if there's an actual change
+            if updatedShoots.count != shoots.count || !zip(shoots, updatedShoots).allSatisfy({ $0.id == $1.id }) {
+                shoots = updatedShoots
+            }
+        }
+        
+        // Re-apply marked status after updating data
+        applyMarkedStatus()
+        
+        // Update database timestamp
+        updateDatabaseTimestamp()
+    }
+    
+    /// Compare two shoots to see if their data is equal
+    private func shootsAreEqual(_ shoot1: Shoot, _ shoot2: Shoot) -> Bool {
+        // Compare key fields that might change
+        return shoot1.id == shoot2.id &&
+               shoot1.shootName == shoot2.shootName &&
+               shoot1.startDate == shoot2.startDate &&
+               shoot1.endDate == shoot2.endDate &&
+               shoot1.latitude == shoot2.latitude &&
+               shoot1.longitude == shoot2.longitude &&
+               shoot1.morningTempF == shoot2.morningTempF &&
+               shoot1.afternoonTempF == shoot2.afternoonTempF
     }
     
     private func updateDatabaseTimestamp() {
