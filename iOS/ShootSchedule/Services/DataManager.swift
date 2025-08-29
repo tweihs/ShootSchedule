@@ -11,6 +11,26 @@ import EventKit
 import UIKit
 import os
 
+// MARK: - Temporary Logger Extensions (until AppLogger.swift is added to Xcode project)
+public extension Logger {
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.shootschedule.app"
+    static let app = Logger(subsystem: subsystem, category: "app")
+    static let auth = Logger(subsystem: subsystem, category: "auth")
+    static let calendar = Logger(subsystem: subsystem, category: "calendar")
+    static let database = Logger(subsystem: subsystem, category: "database")
+    static let sync = Logger(subsystem: subsystem, category: "sync")
+    static let error = Logger(subsystem: subsystem, category: "error")
+}
+
+// MARK: - Temporary DebugLogger (until AppLogger.swift is added to Xcode project)
+struct DebugLogger {
+    static func calendar(_ message: String) {
+        #if DEBUG
+        Logger.calendar.debug("\(message)")
+        #endif
+    }
+}
+
 class DataManager: ObservableObject {
     @Published var shoots: [Shoot] = []
     @Published var isLoading = false
@@ -61,11 +81,11 @@ class DataManager: ObservableObject {
         // Check for database updates on app launch
         Task {
             Logger.app.info("🚀 App launched - checking for database updates...")
-            Logger.database.debug("📊 Current shoots count before update: \(shoots.count)")
+            Logger.database.debug("📊 Current shoots count before update: \(self.shoots.count)")
             
             await fetchShoots()
             
-            Logger.database.debug("📊 Shoots count after update check: \(shoots.count)")
+            Logger.database.debug("📊 Shoots count after update check: \(self.shoots.count)")
             
             // After database check, fetch user preferences
             await fetchAndApplyUserPreferences()
@@ -105,12 +125,12 @@ class DataManager: ObservableObject {
     /// Force check for database updates (useful for testing and manual refresh)
     func checkForDatabaseUpdates() async {
         Logger.database.info("🔍 Database update check requested (manual or foreground)")
-        Logger.database.debug("📊 Shoots count before check: \(shoots.count)")
+        Logger.database.debug("📊 Shoots count before check: \(self.shoots.count)")
         Logger.database.debug("🕐 Time: \(Date())")
         
         await fetchShoots()
         
-        Logger.database.debug("📊 Shoots count after check: \(shoots.count)")
+        Logger.database.debug("📊 Shoots count after check: \(self.shoots.count)")
         Logger.database.debug("🕐 Time: \(Date())")
     }
     
@@ -120,7 +140,7 @@ class DataManager: ObservableObject {
         }
         
         Logger.database.info("🔄 Starting database update check...")
-        Logger.database.debug("📍 Database URL: \(databaseURL)")
+        Logger.database.debug("📍 Database URL: \(self.databaseURL)")
         
         // Try to download latest database
         let success = await sqliteService.downloadLatestDatabase(from: databaseURL)
@@ -293,7 +313,7 @@ class DataManager: ObservableObject {
         
         // Debug: Log unmarked shoot info
         Logger.database.debug("❌ UNMARKED SHOOT: ID=\(shoot.id), Name='\(shoot.shootName)', Club='\(shoot.clubName)')")
-        Logger.database.debug("📋 ALL MARKED SHOOTS: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
+        Logger.database.debug("📋 ALL MARKED SHOOTS: \(Array(self.markedShootIds).sorted()) (Total: \(self.markedShootIds.count))")
         
         // Update the shoot in the array
         if let index = shoots.firstIndex(where: { $0.id == shoot.id }) {

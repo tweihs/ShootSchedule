@@ -11,6 +11,10 @@ import AuthenticationServices
 import CryptoKit
 import os
 
+// MARK: - Import DataManager for Logger extensions
+// Note: Logger extensions are temporarily defined in DataManager.swift
+// until AppLogger.swift is added to the Xcode project
+
 // MARK: - Notification Names
 extension NSNotification.Name {
     static let userPreferencesLoaded = NSNotification.Name("userPreferencesLoaded")
