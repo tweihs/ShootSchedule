@@ -24,6 +24,18 @@ struct ShootRowView: View {
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
                 
+                
+                // Club Name
+                Text(shoot.clubName)
+                    .font(.system(size: 14))
+                    .foregroundColor(.primary)
+                
+                // Location
+                Text(shoot.locationString.uppercased())
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+
+                
                 // Tags Row
                 HStack(spacing: 4) {
                     // Notability Tag
@@ -65,16 +77,6 @@ struct ShootRowView: View {
                     
                     Spacer()
                 }
-                
-                // Club Name
-                Text(shoot.clubName)
-                    .font(.system(size: 14))
-                    .foregroundColor(.primary)
-                
-                // Location
-                Text(shoot.locationString.uppercased())
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
             }
             
             Spacer()

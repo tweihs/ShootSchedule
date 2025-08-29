@@ -32,6 +32,52 @@ struct User {
     }
 }
 
+// MARK: - Local User Preferences
+// Single object to store all user preferences locally
+struct LocalUserPreferences: Codable {
+    var calendarSyncEnabled: Bool = false
+    var useFahrenheit: Bool = true
+    var selectedCalendarSourceId: String? = nil
+    var hasSelectedCalendarSource: Bool = false
+    var markedShootIds: Set<Int> = []
+    var filterSettings: FilterSettingsData? = nil
+    
+    struct FilterSettingsData: Codable {
+        var search: String = ""
+        var shootTypes: [String] = []
+        var months: [Int] = []
+        var states: [String] = []
+        var notable: Bool = false
+        var future: Bool = true
+        var marked: Bool = false
+    }
+    
+    static let storageKey = "userPreferences"
+    
+    // Load preferences from UserDefaults
+    static func load() -> LocalUserPreferences {
+        if let data = UserDefaults.standard.data(forKey: storageKey),
+           let preferences = try? JSONDecoder().decode(LocalUserPreferences.self, from: data) {
+            return preferences
+        }
+        return LocalUserPreferences() // Return default preferences
+    }
+    
+    // Save preferences to UserDefaults
+    func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: LocalUserPreferences.storageKey)
+            UserDefaults.standard.synchronize()
+        }
+    }
+    
+    // Clear all preferences
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: storageKey)
+        UserDefaults.standard.synchronize()
+    }
+}
+
 class AuthenticationManager: NSObject, ObservableObject {
     @Published var currentUser: User?
     @Published var isAuthenticated = false
@@ -45,11 +91,25 @@ class AuthenticationManager: NSObject, ObservableObject {
     }
     
     func checkAuthenticationStatus() {
+        print("🔐 Checking authentication status...")
+        
         // Check stored credentials
         if let userData = UserDefaults.standard.data(forKey: "currentUser"),
            let user = try? JSONDecoder().decode(StoredUser.self, from: userData) {
             self.currentUser = User(id: user.id, email: user.email, displayName: user.displayName, appleUserID: user.appleUserID, identityToken: user.identityToken)
             self.isAuthenticated = true
+            
+            print("👤 Current user loaded:")
+            print("   - Email: \(user.email ?? "none")")
+            print("   - Display Name: \(user.displayName ?? "none")")
+            print("   - User ID: \(user.id)")
+            print("   - Apple User ID: \(user.appleUserID ?? "none")")
+            
+            // If email or displayName is missing, log warning but don't fetch
+            if user.email == nil || user.displayName == nil {
+                print("⚠️ User data incomplete - email: \(user.email ?? "missing"), displayName: \(user.displayName ?? "missing")")
+                print("⚠️ This should only happen if the user data was corrupted or cleared")
+            }
             
             // Check if Apple ID is still valid
             if let appleUserID = user.appleUserID {
@@ -58,9 +118,9 @@ class AuthenticationManager: NSObject, ObservableObject {
                     DispatchQueue.main.async {
                         switch credentialState {
                         case .authorized:
-                            print("Apple ID credential is valid")
+                            print("✅ Apple ID credential is valid")
                         case .revoked, .notFound:
-                            print("Apple ID credential revoked or not found")
+                            print("❌ Apple ID credential revoked or not found")
                             self?.signOut()
                         default:
                             break
@@ -68,9 +128,10 @@ class AuthenticationManager: NSObject, ObservableObject {
                     }
                 }
             }
+        } else {
+            print("👤 No stored user credentials found")
         }
     }
-    
     func signInWithApple() {
         let nonce = randomNonceString()
         currentNonce = nonce
@@ -147,9 +208,22 @@ class AuthenticationManager: NSObject, ObservableObject {
     }
     
     func signOut() {
+        print("🚪 User signing out - clearing all local data")
+        
+        // Clear user data
         currentUser = nil
         isAuthenticated = false
+        
+        // Clear stored user credentials
         UserDefaults.standard.removeObject(forKey: "currentUser")
+        
+        // Clear all user preferences with single call
+        LocalUserPreferences.clear()
+        
+        // Ensure synchronization
+        UserDefaults.standard.synchronize()
+        
+        print("✅ All local user data cleared")
     }
 }
 
@@ -174,22 +248,47 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
                 return
             }
             
+            // Check if we already have stored user data for this Apple ID
+            var storedEmail: String? = nil
+            var storedDisplayName: String? = nil
+            
+            if let existingUserData = UserDefaults.standard.data(forKey: "currentUser"),
+               let existingUser = try? JSONDecoder().decode(StoredUser.self, from: existingUserData),
+               existingUser.appleUserID == appleIDCredential.user {
+                // We have existing user data for this Apple ID
+                storedEmail = existingUser.email
+                storedDisplayName = existingUser.displayName
+                print("📂 Found existing stored data for Apple ID: email=\(storedEmail ?? "none"), displayName=\(storedDisplayName ?? "none")")
+            }
+            
             let email = appleIDCredential.email
             let fullName = appleIDCredential.fullName
             let displayName = [fullName?.givenName, fullName?.familyName]
                 .compactMap { $0 }
                 .joined(separator: " ")
             
+            // Use new values if provided, otherwise use stored values
+            let finalEmail = email ?? storedEmail
+            let finalDisplayName = displayName.isEmpty ? storedDisplayName : displayName
+            
             // Note: email may be a private relay address (xxxxx@privaterelay.appleid.com)
             // or the user's real email if they chose to share it
             if let email = email {
-                print("📧 User provided email: \(email.contains("@privaterelay.appleid.com") ? "Private relay" : "Real email")")
+                print("📧 User provided NEW email: \(email.contains("@privaterelay.appleid.com") ? "Private relay" : "Real email")")
+            } else if let storedEmail = storedEmail {
+                print("📧 Using STORED email: \(storedEmail)")
+            }
+            
+            if !displayName.isEmpty {
+                print("👤 User provided NEW display name: \(displayName)")
+            } else if let storedDisplayName = storedDisplayName {
+                print("👤 Using STORED display name: \(storedDisplayName)")
             }
             
             let user = User(
-                id: UUID().uuidString, // Generate internal ID
-                email: email,
-                displayName: displayName.isEmpty ? nil : displayName,
+                id: UUID().uuidString, // Generate internal ID (will be updated by backend)
+                email: finalEmail,
+                displayName: finalDisplayName,
                 appleUserID: appleIDCredential.user,
                 identityToken: idTokenString
             )
@@ -198,9 +297,10 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
             self.isAuthenticated = true
             self.isSigningIn = false
             
-            // Store user
+            // Store user with all available data
             if let encoded = try? JSONEncoder().encode(StoredUser(from: user)) {
                 UserDefaults.standard.set(encoded, forKey: "currentUser")
+                print("💾 Saved user data locally with email: \(user.email ?? "none"), displayName: \(user.displayName ?? "none")")
             }
             
             print("✅ Apple Sign In successful for user: \(appleIDCredential.user)")
@@ -222,17 +322,23 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
         
         do {
             // Associate the Apple user with backend and get user ID + preferences in one call
-            let (databaseUserId, existingPreferences) = try await preferencesService.associateAppleUser(user: user)
+            let (databaseUserId, backendEmail, backendDisplayName, existingPreferences) = try await preferencesService.associateAppleUser(user: user)
             print("✅ Successfully associated Apple user with backend")
             
             // Update the user with the correct database ID
+            // For email and displayName, prefer local values, then backend values
             let updatedUser = User(
-                id: databaseUserId,  // Use the database ID
-                email: user.email,
-                displayName: user.displayName,
+                id: databaseUserId,  // Use the database ID from backend
+                email: user.email ?? backendEmail,  // Keep local email if we have it
+                displayName: user.displayName ?? backendDisplayName,  // Keep local displayName if we have it
                 appleUserID: user.appleUserID,
                 identityToken: user.identityToken
             )
+            
+            print("📝 Updated user data:")
+            print("   - Email: \(updatedUser.email ?? "none")")
+            print("   - Display Name: \(updatedUser.displayName ?? "none")")
+            print("   - Database ID: \(updatedUser.id)")
             
             // Update our stored user with the correct ID
             self.currentUser = updatedUser

@@ -135,6 +135,7 @@ struct AccountDetailsView: View {
                                     Spacer()
                                     
                                     Button("Sign Out") {
+                                        dataManager.clearAllUserData()
                                         authManager.signOut()
                                     }
                                     .font(.system(size: 13, weight: .medium))
@@ -359,11 +360,12 @@ struct AccountDetailsView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Diagnostics Section
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionHeader(title: "Diagnostics")
-                        
-                        VStack(spacing: 12) {
+                    // Diagnostics Section - only show for specific user
+                    if authManager.currentUser?.email == "tyson@weihs.com" {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionHeader(title: "Diagnostics")
+                            
+                            VStack(spacing: 12) {
                             // Check for database updates
                             Button(action: {
                                 Task {
@@ -477,11 +479,12 @@ struct AccountDetailsView: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
-                        .padding()
-                        .background(Color.secondaryBackground.opacity(0.9))
-                        .cornerRadius(10)
+                            .padding()
+                            .background(Color.secondaryBackground.opacity(0.9))
+                            .cornerRadius(10)
+                        }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                     
                     Spacer(minLength: 100)
                 }
@@ -492,6 +495,10 @@ struct AccountDetailsView: View {
                 dismiss()
             })
             .onAppear {
+                // Debug: Log current user email for diagnostics visibility check
+                print("🔍 AccountDetailsView - Current user email: \(authManager.currentUser?.email ?? "none")")
+                print("🔍 AccountDetailsView - Should show diagnostics: \(authManager.currentUser?.email == "tyson@weihs.com")")
+                
                 updatePermissionStatuses()
                 loadTemperaturePreference()
                 // Update calendar permission status in DataManager
@@ -649,14 +656,14 @@ struct AccountDetailsView: View {
     }
     
     private func loadTemperaturePreference() {
-        useFahrenheit = UserDefaults.standard.object(forKey: "useFahrenheit") != nil 
-            ? UserDefaults.standard.bool(forKey: "useFahrenheit")
-            : true
+        let preferences = LocalUserPreferences.load()
+        useFahrenheit = preferences.useFahrenheit
     }
     
     private func saveTemperaturePreference(_ fahrenheit: Bool) {
-        UserDefaults.standard.set(fahrenheit, forKey: "useFahrenheit")
-        UserDefaults.standard.synchronize()
+        var preferences = LocalUserPreferences.load()
+        preferences.useFahrenheit = fahrenheit
+        preferences.save()
         
         // Sync preference change to backend
         dataManager.syncPreferencesIfAuthenticated()
@@ -711,7 +718,8 @@ struct AccountDetailsView: View {
         // Check if we need calendar source selection
         let availableSources = dataManager.getCalendarSourcesForUserSelection()
         
-        if availableSources.count > 1 && !UserDefaults.standard.bool(forKey: "hasSelectedCalendarSource") {
+        let preferences = LocalUserPreferences.load()
+        if availableSources.count > 1 && !preferences.hasSelectedCalendarSource {
             // Multiple sources available and user hasn't selected one yet
             await MainActor.run {
                 availableCalendarSources = availableSources
@@ -741,7 +749,9 @@ struct AccountDetailsView: View {
                 
                 if success {
                     // Mark that user has selected a source
-                    UserDefaults.standard.set(true, forKey: "hasSelectedCalendarSource")
+                    var preferences = LocalUserPreferences.load()
+                    preferences.hasSelectedCalendarSource = true
+                    preferences.save()
                     
                     // Enable sync now that source is selected (if it wasn't already)
                     if !isCalendarSyncEnabled {

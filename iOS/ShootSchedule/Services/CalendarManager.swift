@@ -104,13 +104,16 @@ class CalendarManager: ObservableObject {
     // MARK: - Calendar Sync Preferences
     
     private func loadCalendarSyncPreference() {
-        isCalendarSyncEnabled = UserDefaults.standard.bool(forKey: "calendarSyncEnabled")
+        let preferences = LocalUserPreferences.load()
+        isCalendarSyncEnabled = preferences.calendarSyncEnabled
     }
     
     func setCalendarSyncEnabled(_ enabled: Bool) {
         isCalendarSyncEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: "calendarSyncEnabled")
-        UserDefaults.standard.synchronize()
+        
+        var preferences = LocalUserPreferences.load()
+        preferences.calendarSyncEnabled = enabled
+        preferences.save()
         
         if enabled && hasCalendarPermission {
             Task {

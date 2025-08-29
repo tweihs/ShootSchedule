@@ -349,20 +349,29 @@ class DataManager: ObservableObject {
             loadedFromPrimary = true
         }
         
-        // If iCloud failed, try backup UserDefaults
+        // If iCloud failed, try LocalUserPreferences
         if !loadedFromPrimary {
-            if let data = UserDefaults.standard.data(forKey: "\(markedShootsKey)_backup"),
-               let ids = try? JSONDecoder().decode(Set<Int>.self, from: data) {
-                markedShootIds = ids
-                print("💾 LOADED MARKED SHOOTS FROM BACKUP: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
+            let preferences = LocalUserPreferences.load()
+            if !preferences.markedShootIds.isEmpty {
+                markedShootIds = preferences.markedShootIds
+                print("💾 LOADED MARKED SHOOTS FROM LOCAL PREFERENCES: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
                 loadedFromPrimary = true
             }
         }
         
-        // If still no data, try legacy UserDefaults for migration
+        // If still no data, try legacy locations for migration
         if !loadedFromPrimary {
-            if let data = UserDefaults.standard.data(forKey: markedShootsKey),
+            // Try old backup location
+            if let data = UserDefaults.standard.data(forKey: "\(markedShootsKey)_backup"),
                let ids = try? JSONDecoder().decode(Set<Int>.self, from: data) {
+                markedShootIds = ids
+                print("📱 MIGRATED MARKED SHOOTS FROM OLD BACKUP: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
+                // Save to new format and remove old format
+                saveMarkedShoots()
+                UserDefaults.standard.removeObject(forKey: "\(markedShootsKey)_backup")
+                loadedFromPrimary = true
+            } else if let data = UserDefaults.standard.data(forKey: markedShootsKey),
+                      let ids = try? JSONDecoder().decode(Set<Int>.self, from: data) {
                 markedShootIds = ids
                 print("📱 MIGRATED MARKED SHOOTS FROM LEGACY STORAGE: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
                 // Save to new format and remove old format
@@ -395,6 +404,49 @@ class DataManager: ObservableObject {
         print("💾 USER DATA SAVE COMPLETE")
     }
     
+    func clearAllUserData() {
+        print("🧹 CLEARING ALL USER DATA...")
+        
+        // Clear marked shoots from memory
+        markedShootIds.removeAll()
+        
+        // Clear from iCloud
+        let iCloudStore = NSUbiquitousKeyValueStore.default
+        iCloudStore.removeObject(forKey: markedShootsKey)
+        iCloudStore.synchronize()
+        
+        // Clear calendar sync preference from memory
+        isCalendarSyncEnabled = false
+        
+        // Clear the local preferences object (handles all UserDefaults in one go)
+        LocalUserPreferences.clear()
+        
+        // Also clear the backup key we were using
+        UserDefaults.standard.removeObject(forKey: "\(markedShootsKey)_backup")
+        
+        // Remove all calendar events if any exist
+        Task {
+            await removeAllShootEvents()
+        }
+        
+        // Reset all shoots to unmarked state
+        for index in shoots.indices {
+            shoots[index].isMarked = false
+        }
+        
+        // Clear filter observers
+        filterObservers.removeAll()
+        
+        // Cancel any pending sync operations
+        syncWorkItem?.cancel()
+        syncWorkItem = nil
+        
+        // Trigger UI update
+        objectWillChange.send()
+        
+        print("✅ ALL USER DATA CLEARED")
+    }
+    
     func saveMarkedShoots() {
         if let data = try? JSONEncoder().encode(markedShootIds) {
             // Save to iCloud
@@ -403,10 +455,11 @@ class DataManager: ObservableObject {
             iCloudStore.synchronize()
             print("☁️ SAVED MARKED SHOOTS TO ICLOUD: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
             
-            // Also save to UserDefaults as backup
-            UserDefaults.standard.set(data, forKey: "\(markedShootsKey)_backup")
-            UserDefaults.standard.synchronize()
-            print("💾 BACKUP SAVED TO USERDEFAULTS: \(markedShootIds.count) shoots")
+            // Also save to LocalUserPreferences
+            var preferences = LocalUserPreferences.load()
+            preferences.markedShootIds = markedShootIds
+            preferences.save()
+            print("💾 SAVED TO LOCAL PREFERENCES: \(markedShootIds.count) shoots")
             
             // Sync to database if authenticated
             syncPreferencesIfAuthenticated()
@@ -774,14 +827,18 @@ class DataManager: ObservableObject {
     }
     
     private func loadCalendarSyncPreference() {
-        isCalendarSyncEnabled = UserDefaults.standard.bool(forKey: "calendarSyncEnabled")
+        let preferences = LocalUserPreferences.load()
+        isCalendarSyncEnabled = preferences.calendarSyncEnabled
     }
     
     func setCalendarSyncEnabled(_ enabled: Bool) {
         DebugLogger.calendar(" Setting calendar sync enabled: \(enabled), hasPermission: \(hasCalendarPermission)")
         isCalendarSyncEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: "calendarSyncEnabled")
-        UserDefaults.standard.synchronize()
+        
+        // Update preferences object
+        var preferences = LocalUserPreferences.load()
+        preferences.calendarSyncEnabled = enabled
+        preferences.save()
         
         // Sync preference change to backend
         syncPreferencesIfAuthenticated()
@@ -818,7 +875,8 @@ class DataManager: ObservableObject {
         DebugLogger.calendar(" All sources: \(allSources.count), Available sources: \(availableSources.count)")
         
         // If user has already selected a preferred source, use it
-        if let savedSourceId = UserDefaults.standard.string(forKey: "preferredCalendarSourceId"),
+        let preferences = LocalUserPreferences.load()
+        if let savedSourceId = preferences.selectedCalendarSourceId,
            let preferredSource = allSources.first(where: { $0.sourceIdentifier == savedSourceId }) {
             DebugLogger.calendar(" Using previously selected calendar source: \(preferredSource.title)")
             await createCalendar(in: preferredSource)
@@ -1166,14 +1224,13 @@ class DataManager: ObservableObject {
         // Use the selected existing calendar directly
         shootScheduleCalendar = selectedCalendar
         
-        // Store the selected calendar identifier
-        UserDefaults.standard.set(selectedCalendar.calendarIdentifier, forKey: "shootScheduleCalendarId")
-        UserDefaults.standard.set(selectedCalendar.source?.sourceIdentifier, forKey: "preferredCalendarSourceId")
+        // Store the selected calendar identifier in preferences
+        var preferences = LocalUserPreferences.load()
+        preferences.selectedCalendarSourceId = selectedCalendar.calendarIdentifier
+        preferences.hasSelectedCalendarSource = true
+        preferences.save()
         
         DebugLogger.calendar(" ✅ Using existing calendar: \(selectedCalendar.title)")
-        
-        // Clear the need for selection flag
-        UserDefaults.standard.removeObject(forKey: "needsCalendarSourceSelection")
         
         return true
     }
@@ -1703,7 +1760,17 @@ class DataManager: ObservableObject {
             return 
         }
         
-        DebugLogger.calendar(" 🗑️ Found calendar to remove: '\(calendar.title)' (ID: \(calendar.calendarIdentifier))")
+        // IMPORTANT: Only remove calendars that were created by ShootSchedule
+        // Do NOT remove user's existing calendars they selected
+        if calendar.title != calendarTitle {
+            DebugLogger.calendar(" ⚠️ Calendar '\(calendar.title)' is not a ShootSchedule-created calendar")
+            DebugLogger.calendar(" ℹ️ Clearing reference but NOT removing user's calendar")
+            shootScheduleCalendar = nil
+            UserDefaults.standard.removeObject(forKey: "shootScheduleCalendarId")
+            return
+        }
+        
+        DebugLogger.calendar(" 🗑️ Found ShootSchedule-created calendar to remove: '\(calendar.title)' (ID: \(calendar.calendarIdentifier))")
         
         // Count existing events before deletion for debugging
         let predicate = eventStore.predicateForEvents(
@@ -1731,7 +1798,7 @@ class DataManager: ObservableObject {
             
             // Clear stored calendar ID
             UserDefaults.standard.removeObject(forKey: "shootScheduleCalendarId")
-            UserDefaults.standard.removeObject(forKey: "hasSelectedCalendarSource")
+            // Calendar source preference now handled in LocalUserPreferences
             
             DebugLogger.calendar(" ✅ Successfully removed ShootSchedule calendar '\(calendar.title)' and all \(existingEvents.count) events")
             DebugLogger.calendar(" ✅ Cleared calendar reference and UserDefaults storage")
@@ -2017,7 +2084,7 @@ class DataManager: ObservableObject {
         // Subscribe to combined changes
         let observer = combinedPublisher
             .sink { [weak self] _ in
-                print("📝 Filter preferences changed, triggering sync...")
+                // print("📝 Filter preferences changed, triggering sync...")
                 self?.syncPreferencesIfAuthenticated()
             }
         

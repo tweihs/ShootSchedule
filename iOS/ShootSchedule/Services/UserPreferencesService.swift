@@ -32,7 +32,8 @@ struct UserPreferences: Codable {
         markedShoots = try container.decodeIfPresent([Int].self, forKey: .markedShoots) ?? []
         temperatureUnit = try container.decodeIfPresent(String.self, forKey: .temperatureUnit) ?? "fahrenheit"
         // Use local value as default if server doesn't have the preference
-        calendarSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .calendarSyncEnabled) ?? UserDefaults.standard.bool(forKey: "calendarSyncEnabled")
+        let localPrefs = LocalUserPreferences.load()
+        calendarSyncEnabled = try container.decodeIfPresent(Bool.self, forKey: .calendarSyncEnabled) ?? localPrefs.calendarSyncEnabled
     }
     
     // Standard initializer for creating instances
@@ -98,7 +99,46 @@ class UserPreferencesService: ObservableObject {
         }
     }
     
-    func associateAppleUser(user: User) async throws -> (userId: String, preferences: UserPreferences?) {
+    struct UserDataResponse: Codable {
+        let userId: String
+        let email: String?
+        let displayName: String?
+    }
+    
+    func getUserData(userId: String) async throws -> UserDataResponse {
+        // Use the getUserPreferences endpoint which includes user data
+        let endpoint = URL(string: "\(baseURL)/getUserPreferences/\(userId)")!
+        print("📡 Fetching user data from: \(endpoint)")
+        
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "GET"
+        
+        let (data, response) = try await session.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            print("❌ Failed to fetch user data - status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("Response: \(responseString)")
+            }
+            throw UserPreferencesError.serverError
+        }
+        
+        // The response includes user data at the top level
+        struct PreferencesResponse: Codable {
+            let userId: String
+            let email: String?
+            let displayName: String?
+            // Other fields we don't need right now
+        }
+        
+        let prefsData = try JSONDecoder().decode(PreferencesResponse.self, from: data)
+        return UserDataResponse(userId: prefsData.userId, 
+                               email: prefsData.email, 
+                               displayName: prefsData.displayName)
+    }
+    
+    func associateAppleUser(user: User) async throws -> (userId: String, email: String?, displayName: String?, preferences: UserPreferences?) {
         guard let appleUserID = user.appleUserID,
               let identityToken = user.identityToken else {
             print("❌ Missing Apple credentials - appleUserID: \(user.appleUserID ?? "nil"), identityToken: \(user.identityToken != nil ? "present" : "nil")")
@@ -146,6 +186,8 @@ class UserPreferencesService: ObservableObject {
             print("✅ Successfully associated Apple user: \(appleUserID)")
             print("   Database User ID: \(associationResponse.userId)")
             print("   Is new user: \(associationResponse.isNewUser)")
+            print("   Email from backend: \(associationResponse.email ?? "none")")
+            print("   Display name from backend: \(associationResponse.displayName ?? "none")")
             
             // Convert response preferences to UserPreferences if they exist
             var userPreferences: UserPreferences? = nil
@@ -165,7 +207,7 @@ class UserPreferencesService: ObservableObject {
                     filterSettings: filterSettings,
                     markedShoots: prefs.markedShoots ?? [],
                     temperatureUnit: "fahrenheit", // Default, will be overridden if preferences exist
-                    calendarSyncEnabled: UserDefaults.standard.bool(forKey: "calendarSyncEnabled") // Use local value as default
+                    calendarSyncEnabled: LocalUserPreferences.load().calendarSyncEnabled // Use local value as default
                 )
                 
                 print("📥 Preferences included in response for existing user")
@@ -173,7 +215,7 @@ class UserPreferencesService: ObservableObject {
                 print("👤 New user - no preferences to load")
             }
             
-            return (associationResponse.userId, userPreferences)
+            return (associationResponse.userId, associationResponse.email, associationResponse.displayName, userPreferences)
         } catch {
             print("❌ Failed to associate Apple user: \(error)")
             print("   Error details: \(error.localizedDescription)")
@@ -185,7 +227,7 @@ class UserPreferencesService: ObservableObject {
     
     func syncUserPreferences(user: User, preferences: UserPreferences) async throws {
         let endpoint = URL(string: "\(baseURL)/syncUserPreferences")!
-        print("📤 Syncing preferences to: \(endpoint)")
+        // print("📤 Syncing preferences to: \(endpoint)")
         
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -197,13 +239,13 @@ class UserPreferencesService: ObservableObject {
             encoder.outputFormatting = .prettyPrinted
             request.httpBody = try encoder.encode(preferences)
             
-            // Log the JSON being sent
-            if let jsonString = String(data: request.httpBody!, encoding: .utf8) {
-                print("📤 JSON being sent to database:")
-                print("=====================================")
-                print(jsonString)
-                print("=====================================")
-            }
+            // Log the JSON being sent (disabled for production)
+            // if let jsonString = String(data: request.httpBody!, encoding: .utf8) {
+            //     print("📤 JSON being sent to database:")
+            //     print("=====================================")
+            //     print(jsonString)
+            //     print("=====================================")
+            // }
             
             let (data, response) = try await session.data(for: request)
             
@@ -212,18 +254,18 @@ class UserPreferencesService: ObservableObject {
                 throw UserPreferencesError.serverError
             }
             
-            print("📥 Sync response status: \(httpResponse.statusCode)")
+            // print("📥 Sync response status: \(httpResponse.statusCode)")
             
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("📥 Sync response data: \(responseString)")
-            }
+            // if let responseString = String(data: data, encoding: .utf8) {
+            //     print("📥 Sync response data: \(responseString)")
+            // }
             
             guard httpResponse.statusCode == 200 || httpResponse.statusCode == 201 else {
                 print("❌ Server returned error status: \(httpResponse.statusCode)")
                 throw UserPreferencesError.serverError
             }
             
-            print("✅ Successfully synced user preferences for: \(user.id)")
+            // print("✅ Successfully synced user preferences for: \(user.id)")
         } catch {
             print("❌ Failed to sync user preferences: \(error)")
             print("   Error details: \(error.localizedDescription)")
@@ -283,7 +325,7 @@ class UserPreferencesService: ObservableObject {
                 throw UserPreferencesError.serverError
             }
             
-            print("✅ Successfully synced marked shoots for: \(user.id)")
+            // print("✅ Successfully synced marked shoots for: \(user.id)")
         } catch {
             print("❌ Failed to sync marked shoots: \(error)")
             throw error
@@ -305,12 +347,14 @@ class UserPreferencesService: ObservableObject {
         
         let markedShootIds = Array(dataManager.markedShootIds)
         
+        let localPrefs = LocalUserPreferences.load()
+        
         return UserPreferences(
             userId: user.id,
             filterSettings: filterSettings,
             markedShoots: markedShootIds,
-            temperatureUnit: UserDefaults.standard.bool(forKey: "useFahrenheit") ? "fahrenheit" : "celsius",
-            calendarSyncEnabled: dataManager.isCalendarSyncEnabled
+            temperatureUnit: localPrefs.useFahrenheit ? "fahrenheit" : "celsius",
+            calendarSyncEnabled: localPrefs.calendarSyncEnabled
         )
     }
     
@@ -336,15 +380,20 @@ class UserPreferencesService: ObservableObject {
             print("   New from server: \(Array(dataManager.markedShootIds).sorted()) (count: \(dataManager.markedShootIds.count))")
             
             // Always update local storage and UI when receiving from server
-            // Save to local storage only (iCloud and UserDefaults)
+            // Save to iCloud
             if let data = try? JSONEncoder().encode(dataManager.markedShootIds) {
                 let iCloudStore = NSUbiquitousKeyValueStore.default
                 iCloudStore.set(data, forKey: "markedShoots")
                 iCloudStore.synchronize()
-                UserDefaults.standard.set(data, forKey: "markedShoots_backup")
-                UserDefaults.standard.synchronize()
-                print("📥 Saved marked shoots to local storage: \(Array(dataManager.markedShootIds).sorted())")
             }
+            
+            // Update LocalUserPreferences with all data from server
+            var localPrefs = LocalUserPreferences.load()
+            localPrefs.markedShootIds = dataManager.markedShootIds
+            localPrefs.useFahrenheit = preferences.temperatureUnit == "fahrenheit"
+            localPrefs.calendarSyncEnabled = preferences.calendarSyncEnabled
+            localPrefs.save()
+            print("📥 Saved preferences to local storage")
             
             // Always apply to shoots list and update UI
             dataManager.applyMarkedStatus() // Apply to shoots list
@@ -352,10 +401,6 @@ class UserPreferencesService: ObservableObject {
             dataManager.objectWillChange.send()
             
             print("📥 Marked count after apply: \(dataManager.markedShootsCount)")
-            
-            // Update temperature preference
-            let useFahrenheit = preferences.temperatureUnit == "fahrenheit"
-            UserDefaults.standard.set(useFahrenheit, forKey: "useFahrenheit")
             
             // Update calendar sync - apply server setting to all devices
             dataManager.setCalendarSyncEnabled(preferences.calendarSyncEnabled)
