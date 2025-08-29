@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import AuthenticationServices
 import CryptoKit
+import os
 
 // MARK: - Notification Names
 extension NSNotification.Name {
@@ -91,7 +92,7 @@ class AuthenticationManager: NSObject, ObservableObject {
     }
     
     func checkAuthenticationStatus() {
-        print("🔐 Checking authentication status...")
+        Logger.auth.debug("🔐 Checking authentication status...")
         
         // Check stored credentials
         if let userData = UserDefaults.standard.data(forKey: "currentUser"),
@@ -99,16 +100,16 @@ class AuthenticationManager: NSObject, ObservableObject {
             self.currentUser = User(id: user.id, email: user.email, displayName: user.displayName, appleUserID: user.appleUserID, identityToken: user.identityToken)
             self.isAuthenticated = true
             
-            print("👤 Current user loaded:")
-            print("   - Email: \(user.email ?? "none")")
-            print("   - Display Name: \(user.displayName ?? "none")")
-            print("   - User ID: \(user.id)")
-            print("   - Apple User ID: \(user.appleUserID ?? "none")")
+            Logger.auth.info("👤 Current user loaded:")
+            Logger.auth.debug("   - Email: \(user.email ?? "none")")
+            Logger.auth.debug("   - Display Name: \(user.displayName ?? "none")")
+            Logger.auth.debug("   - User ID: \(user.id)")
+            Logger.auth.debug("   - Apple User ID: \(user.appleUserID ?? "none")")
             
             // If email or displayName is missing, log warning but don't fetch
             if user.email == nil || user.displayName == nil {
-                print("⚠️ User data incomplete - email: \(user.email ?? "missing"), displayName: \(user.displayName ?? "missing")")
-                print("⚠️ This should only happen if the user data was corrupted or cleared")
+                Logger.auth.warning("⚠️ User data incomplete - email: \(user.email ?? "missing"), displayName: \(user.displayName ?? "missing")")
+                Logger.auth.warning("⚠️ This should only happen if the user data was corrupted or cleared")
             }
             
             // Check if Apple ID is still valid
@@ -118,9 +119,9 @@ class AuthenticationManager: NSObject, ObservableObject {
                     DispatchQueue.main.async {
                         switch credentialState {
                         case .authorized:
-                            print("✅ Apple ID credential is valid")
+                            Logger.auth.debug("✅ Apple ID credential is valid")
                         case .revoked, .notFound:
-                            print("❌ Apple ID credential revoked or not found")
+                            Logger.auth.warning("❌ Apple ID credential revoked or not found")
                             self?.signOut()
                         default:
                             break
@@ -129,7 +130,7 @@ class AuthenticationManager: NSObject, ObservableObject {
                 }
             }
         } else {
-            print("👤 No stored user credentials found")
+            Logger.auth.info("👤 No stored user credentials found")
         }
     }
     func signInWithApple() {
@@ -208,7 +209,7 @@ class AuthenticationManager: NSObject, ObservableObject {
     }
     
     func signOut() {
-        print("🚪 User signing out - clearing all local data")
+        Logger.auth.info("🚪 User signing out - clearing all local data")
         
         // Clear user data
         currentUser = nil
@@ -223,7 +224,7 @@ class AuthenticationManager: NSObject, ObservableObject {
         // Ensure synchronization
         UserDefaults.standard.synchronize()
         
-        print("✅ All local user data cleared")
+        Logger.auth.info("✅ All local user data cleared")
     }
 }
 
@@ -237,13 +238,13 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
             }
             
             guard let appleIDToken = appleIDCredential.identityToken else {
-                print("Unable to fetch identity token")
+                Logger.auth.error("Unable to fetch identity token")
                 isSigningIn = false
                 return
             }
             
             guard let idTokenString = String(data: appleIDToken, encoding: .utf8) else {
-                print("Unable to serialize token string from data: \(appleIDToken.debugDescription)")
+                Logger.auth.error("Unable to serialize token string from data: \(appleIDToken.debugDescription)")
                 isSigningIn = false
                 return
             }
@@ -258,7 +259,7 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
                 // We have existing user data for this Apple ID
                 storedEmail = existingUser.email
                 storedDisplayName = existingUser.displayName
-                print("📂 Found existing stored data for Apple ID: email=\(storedEmail ?? "none"), displayName=\(storedDisplayName ?? "none")")
+                Logger.auth.debug("📂 Found existing stored data for Apple ID: email=\(storedEmail ?? "none"), displayName=\(storedDisplayName ?? "none")")
             }
             
             let email = appleIDCredential.email
@@ -274,15 +275,15 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
             // Note: email may be a private relay address (xxxxx@privaterelay.appleid.com)
             // or the user's real email if they chose to share it
             if let email = email {
-                print("📧 User provided NEW email: \(email.contains("@privaterelay.appleid.com") ? "Private relay" : "Real email")")
+                Logger.auth.info("📧 User provided NEW email: \(email.contains("@privaterelay.appleid.com") ? "Private relay" : "Real email")")
             } else if let storedEmail = storedEmail {
-                print("📧 Using STORED email: \(storedEmail)")
+                Logger.auth.debug("📧 Using STORED email: \(storedEmail)")
             }
             
             if !displayName.isEmpty {
-                print("👤 User provided NEW display name: \(displayName)")
+                Logger.auth.info("👤 User provided NEW display name: \(displayName)")
             } else if let storedDisplayName = storedDisplayName {
-                print("👤 Using STORED display name: \(storedDisplayName)")
+                Logger.auth.debug("👤 Using STORED display name: \(storedDisplayName)")
             }
             
             let user = User(
@@ -300,10 +301,10 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
             // Store user with all available data
             if let encoded = try? JSONEncoder().encode(StoredUser(from: user)) {
                 UserDefaults.standard.set(encoded, forKey: "currentUser")
-                print("💾 Saved user data locally with email: \(user.email ?? "none"), displayName: \(user.displayName ?? "none")")
+                Logger.auth.info("💾 Saved user data locally with email: \(user.email ?? "none"), displayName: \(user.displayName ?? "none")")
             }
             
-            print("✅ Apple Sign In successful for user: \(appleIDCredential.user)")
+            Logger.auth.info("✅ Apple Sign In successful for user: \(appleIDCredential.user)")
             
             // TODO: Send user data to backend for association
             Task {
@@ -313,7 +314,7 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
     }
     
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-        print("❌ Apple Sign In error: \(error.localizedDescription)")
+        Logger.auth.error("❌ Apple Sign In error: \(error.localizedDescription)")
         isSigningIn = false
     }
     
@@ -323,7 +324,7 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
         do {
             // Associate the Apple user with backend and get user ID + preferences in one call
             let (databaseUserId, backendEmail, backendDisplayName, existingPreferences) = try await preferencesService.associateAppleUser(user: user)
-            print("✅ Successfully associated Apple user with backend")
+            Logger.auth.info("✅ Successfully associated Apple user with backend")
             
             // Update the user with the correct database ID
             // For email and displayName, prefer local values, then backend values
@@ -335,10 +336,10 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
                 identityToken: user.identityToken
             )
             
-            print("📝 Updated user data:")
-            print("   - Email: \(updatedUser.email ?? "none")")
-            print("   - Display Name: \(updatedUser.displayName ?? "none")")
-            print("   - Database ID: \(updatedUser.id)")
+            Logger.auth.info("📝 Updated user data:")
+            Logger.auth.debug("   - Email: \(updatedUser.email ?? "none")")
+            Logger.auth.debug("   - Display Name: \(updatedUser.displayName ?? "none")")
+            Logger.auth.debug("   - Database ID: \(updatedUser.id)")
             
             // Update our stored user with the correct ID
             self.currentUser = updatedUser
@@ -348,18 +349,18 @@ extension AuthenticationManager: ASAuthorizationControllerDelegate {
             
             // Check if we received existing preferences from the server
             if let existingPreferences = existingPreferences {
-                print("📥 Found existing user preferences, applying to app")
+                Logger.sync.info("📥 Found existing user preferences, applying to app")
                 
                 // Apply preferences to DataManager via notification
                 NotificationCenter.default.post(name: .userPreferencesLoaded, object: existingPreferences)
             } else {
-                print("👤 New user - will sync local preferences to backend when available")
+                Logger.sync.info("👤 New user - will sync local preferences to backend when available")
                 
                 // Signal that we need to sync current local preferences to backend
                 NotificationCenter.default.post(name: .newUserNeedsPreferenceSync, object: updatedUser)
             }
         } catch {
-            print("❌ Failed to sync user to backend: \(error)")
+            Logger.auth.error("❌ Failed to sync user to backend: \(error)")
             // Don't prevent login on sync failure - user can still use app locally
         }
     }

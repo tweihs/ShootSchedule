@@ -9,14 +9,7 @@ import Foundation
 import Combine
 import EventKit
 import UIKit
-
-// Temporary DebugLogger until added to project
-struct DebugLogger {
-    static func calendar(_ message: String) {
-        // Calendar logging is disabled
-        // print("📅 \(message)")
-    }
-}
+import os
 
 class DataManager: ObservableObject {
     @Published var shoots: [Shoot] = []
@@ -67,12 +60,12 @@ class DataManager: ObservableObject {
         
         // Check for database updates on app launch
         Task {
-            print("🚀 App launched - checking for database updates...")
-            print("📊 Current shoots count before update: \(shoots.count)")
+            Logger.app.info("🚀 App launched - checking for database updates...")
+            Logger.database.debug("📊 Current shoots count before update: \(shoots.count)")
             
             await fetchShoots()
             
-            print("📊 Shoots count after update check: \(shoots.count)")
+            Logger.database.debug("📊 Shoots count after update check: \(shoots.count)")
             
             // After database check, fetch user preferences
             await fetchAndApplyUserPreferences()
@@ -111,14 +104,14 @@ class DataManager: ObservableObject {
     
     /// Force check for database updates (useful for testing and manual refresh)
     func checkForDatabaseUpdates() async {
-        print("\n🔍 Database update check requested (manual or foreground)")
-        print("📊 Shoots count before check: \(shoots.count)")
-        print("🕐 Time: \(Date())")
+        Logger.database.info("🔍 Database update check requested (manual or foreground)")
+        Logger.database.debug("📊 Shoots count before check: \(shoots.count)")
+        Logger.database.debug("🕐 Time: \(Date())")
         
         await fetchShoots()
         
-        print("📊 Shoots count after check: \(shoots.count)")
-        print("🕐 Time: \(Date())")
+        Logger.database.debug("📊 Shoots count after check: \(shoots.count)")
+        Logger.database.debug("🕐 Time: \(Date())")
     }
     
     func fetchShoots() async {
@@ -126,14 +119,14 @@ class DataManager: ObservableObject {
             isLoading = true
         }
         
-        print("\n🔄 Starting database update check...")
-        print("📍 Database URL: \(databaseURL)")
+        Logger.database.info("🔄 Starting database update check...")
+        Logger.database.debug("📍 Database URL: \(databaseURL)")
         
         // Try to download latest database
         let success = await sqliteService.downloadLatestDatabase(from: databaseURL)
         
         if success {
-            print("✅ Database was updated, reloading shoots...")
+            Logger.database.info("✅ Database was updated, reloading shoots...")
             await MainActor.run {
                 // Smart update to preserve scroll position
                 updateShootsWithoutScrollReset()
@@ -298,9 +291,9 @@ class DataManager: ObservableObject {
         markedShootIds.remove(shoot.id)
         saveMarkedShoots()
         
-        // Debug: Print unmarked shoot info
-        print("❌ UNMARKED SHOOT: ID=\(shoot.id), Name='\(shoot.shootName)', Club='\(shoot.clubName)'")
-        print("📋 ALL MARKED SHOOTS: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
+        // Debug: Log unmarked shoot info
+        Logger.database.debug("❌ UNMARKED SHOOT: ID=\(shoot.id), Name='\(shoot.shootName)', Club='\(shoot.clubName)')")
+        Logger.database.debug("📋 ALL MARKED SHOOTS: \(Array(markedShootIds).sorted()) (Total: \(markedShootIds.count))")
         
         // Update the shoot in the array
         if let index = shoots.firstIndex(where: { $0.id == shoot.id }) {
@@ -444,7 +437,7 @@ class DataManager: ObservableObject {
         // Trigger UI update
         objectWillChange.send()
         
-        print("✅ ALL USER DATA CLEARED")
+        Logger.app.info("✅ ALL USER DATA CLEARED")
     }
     
     func saveMarkedShoots() {
@@ -1966,7 +1959,7 @@ class DataManager: ObservableObject {
         do {
             // Sync both preferences and marked shoots in a single call
             try await userPreferencesService.syncUserPreferences(user: user, preferences: preferences)
-            print("📤 Successfully synced current preferences and marked shoots to server")
+            Logger.sync.info("📤 Successfully synced current preferences and marked shoots to server")
             
         } catch {
             print("❌ Failed to sync preferences to server: \(error)")
@@ -1990,7 +1983,7 @@ class DataManager: ObservableObject {
                 // Apply preferences using the existing mechanism
                 await MainActor.run {
                     self.userPreferencesService.applyUserPreferences(serverPreferences, to: self)
-                    print("✅ Successfully applied server preferences to local state")
+                    Logger.sync.info("✅ Successfully applied server preferences to local state")
                 }
             } else {
                 print("📥 No preferences found on server for user")
@@ -2021,7 +2014,7 @@ class DataManager: ObservableObject {
                     let userPreferencesService = UserPreferencesService()
                     let preferences = userPreferencesService.createUserPreferences(from: currentUser, dataManager: self)
                     try await userPreferencesService.syncUserPreferences(user: currentUser, preferences: preferences)
-                    print("✅ Successfully synced preferences to server")
+                    Logger.sync.info("✅ Successfully synced preferences to server")
                 } catch {
                     print("❌ Failed to sync local preferences: \(error)")
                 }
